@@ -1,0 +1,30 @@
+# Local development services for Baked & Browned.
+# Usage (from repo root):
+#   cp infra/docker/.env.example infra/docker/.env   # then set a local password
+#   docker compose -f infra/docker/compose.yaml up -d
+name: baked-and-browned
+
+services:
+  postgres:
+    image: postgres:17.12-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bakedandbrowned}
+      POSTGRES_USER: ${POSTGRES_USER:-bakedandbrowned}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in infra/docker/.env}
+      # Instants are stored as TIMESTAMPTZ; the server session zone stays UTC.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Bound to localhost only; never expose the database on all interfaces.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

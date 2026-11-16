@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: baked-and-browned-api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only health is exposed; other actuator endpoints stay private.
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true

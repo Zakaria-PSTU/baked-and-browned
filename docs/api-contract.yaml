@@ -1,0 +1,1954 @@
+openapi: 3.0.3
+info:
+  title: Baked & Browned API
+  version: 1.1.0
+  description: |
+    MVP contract for an online bakery in Dhaka. Prices are server-calculated.
+    JWT bearer authentication protects customer/admin endpoints. Refresh token
+    uses a Secure HttpOnly cookie and a separate CSRF defense.
+
+    v1.1 is a backward-compatible extension of v1.0 (ADR-0013, ADR-0014):
+    complete order detail, customer cancellation, manual payment submission,
+    delivery zones, and the admin operational APIs. No v1.0 operation, field
+    or required property was removed or renamed.
+
+    Conventions: money is BDT, serialized with exactly two decimals and
+    computed only by the server. Dates (`format: date`) are Asia/Dhaka
+    calendar dates. All `/admin/**` operations require the ADMIN role
+    (403 otherwise). Errors use application/problem+json.
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: Catalog
+  - name: Checkout
+  - name: Orders
+  - name: Payments
+  - name: Admin
+security: []
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a customer
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in; response sets HttpOnly refresh cookie
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Access token and user. Also sets the refresh cookie and a readable XSRF-TOKEN cookie.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token using cookie and CSRF token
+      operationId: refresh
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Rotated refresh cookie and new access token
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh session
+      operationId: logout
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '204': {description: Logged out}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /auth/me:
+    get:
+      tags: [Auth]
+      security: [{bearerAuth: []}]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /categories:
+    get:
+      tags: [Catalog]
+      operationId: listCategories
+      responses:
+        '200':
+          description: Active categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Category'}
+  /products:
+    get:
+      tags: [Catalog]
+      operationId: listProducts
+      parameters:
+        - {name: category, in: query, description: Category slug, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string, maxLength: 100}}
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Paginated active products
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProductPage'}
+  /products/{slug}:
+    get:
+      tags: [Catalog]
+      operationId: getProduct
+      parameters:
+        - {$ref: '#/components/parameters/Slug'}
+      responses:
+        '200':
+          description: Product with available customizations
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /delivery-slots:
+    get:
+      tags: [Catalog]
+      operationId: listDeliverySlots
+      parameters:
+        - {name: date, in: query, required: true, description: Asia/Dhaka calendar date, schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: Available slots (not a capacity guarantee)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DeliverySlot'}
+  /delivery-zones:
+    get:
+      tags: [Catalog]
+      operationId: listDeliveryZones
+      summary: Active, fee-configured delivery zones (v1.1)
+      responses:
+        '200':
+          description: Zones a customer may select. Use `code` as DeliveryAddress.area.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DeliveryZone'}
+  /checkout/quote:
+    post:
+      tags: [Checkout]
+      security: [{bearerAuth: []}]
+      operationId: quoteCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutQuoteRequest'}
+      responses:
+        '200':
+          description: Server-calculated nonbinding quote
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutQuote'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /orders:
+    post:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: placeOrder
+      description: |
+        Idempotent per (user, idempotencyKey). Replaying the same key with the
+        same body returns the original order with 201. Reusing a key with a
+        different body returns 422 with code IDEMPOTENCY_KEY_REUSED.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlaceOrderRequest'}
+      responses:
+        '201':
+          description: Order created (or original order on idempotent replay)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderDetail'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+    get:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: listMyOrders
+      responses:
+        '200':
+          description: Orders belonging to authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Order'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: getOrder
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: Owned order, or any order for ADMIN (customer-safe detail; admins use adminGetOrder for full detail)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderDetail'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /orders/{orderId}/cancel:
+    post:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: cancelMyOrder
+      summary: Customer cancellation before the order's cancellation deadline (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CancelOrderRequest'}
+      responses:
+        '200':
+          description: Cancelled order. A refund request is opened automatically if a payment had succeeded.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderDetail'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /payments/{orderId}/initiate:
+    post:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: initiatePayment
+      description: ONLINE orders only. Reuses an open session for the current payment when one exists.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: Hosted checkout session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paymentId, checkoutUrl]
+                properties:
+                  paymentId: {$ref: '#/components/schemas/Uuid'}
+                  checkoutUrl: {type: string, format: uri}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /payments/{orderId}/manual-submission:
+    post:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: submitManualPayment
+      summary: Submit manual payment evidence (v1.1)
+      description: |
+        MANUAL orders in PENDING_PAYMENT only. Evidence is NOT proof of payment;
+        the payment remains PENDING until an ADMIN verifies it.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [provider, transactionReference]
+              properties:
+                provider: {$ref: '#/components/schemas/ManualPaymentProvider'}
+                transactionReference: {type: string, minLength: 3, maxLength: 100}
+                proof:
+                  type: string
+                  format: binary
+                  description: Optional JPEG, PNG or PDF, max 5 MB.
+      responses:
+        '201':
+          description: Submission recorded; payment still PENDING
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ManualPaymentSubmission'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /payments/webhooks/{provider}:
+    post:
+      tags: [Payments]
+      operationId: paymentWebhook
+      description: |
+        Provider-specific signed/verified callback; idempotent processing.
+        Adapters may accept the provider's native encoding; the payload is
+        never trusted until verified server-to-server.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+          application/x-www-form-urlencoded:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        '200': {description: Accepted or already processed}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /admin/orders:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListOrders
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/OrderStatus'}}
+      responses:
+        '200':
+          description: All orders for admin
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Order'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/orders/{orderId}:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetOrder
+      summary: Full admin order detail (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: Admin order detail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminOrderDetail'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/orders/{orderId}/status:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminChangeOrderStatus
+      description: |
+        Fulfillment transitions and admin cancellation. `reason` is required
+        when status is CANCELLED. Cannot confirm a PENDING_PAYMENT order or
+        change an EXPIRED order; use payment verification or reconciliation.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {$ref: '#/components/schemas/OrderStatus'}
+                reason: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        '200':
+          description: Updated order
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/orders/{orderId}/status-history:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetOrderStatusHistory
+      summary: Full status history with actors and reasons (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: History, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AdminOrderStatusEvent'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/categories:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListCategories
+      responses:
+        '200':
+          description: All categories including inactive
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AdminCategory'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CategoryWrite'}
+      responses:
+        '201':
+          description: Created category
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminCategory'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/categories/{categoryId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateCategory
+      description: Full replacement of writable fields (same semantics as adminUpdateProduct).
+      parameters:
+        - {$ref: '#/components/parameters/CategoryId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CategoryWrite'}
+      responses:
+        '200':
+          description: Updated category
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminCategory'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListProducts
+      summary: All products in any status (v1.1)
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ProductStatus'}}
+        - {name: categoryId, in: query, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: Paginated admin products
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminProductPage'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductWrite'}
+      responses:
+        '201':
+          description: Created product
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products/{productId}:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetProduct
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      responses:
+        '200':
+          description: Admin product
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminProduct'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateProduct
+      description: Full replacement of writable fields (all ProductWrite required fields must be sent).
+      parameters:
+        - {name: productId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductWrite'}
+      responses:
+        '200':
+          description: Updated product
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products/{productId}/customizations:
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetProductCustomizations
+      summary: Replace the product's customization groups and allowed options (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/ProductCustomizationAssignment'}
+      responses:
+        '200':
+          description: Product with updated customizations
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products/{productId}/ingredients:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetProductRecipe
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      responses:
+        '200':
+          description: Ingredient consumption per product unit
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetProductRecipe
+      summary: Replace ingredient consumption per product unit (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/ProductIngredientLine'}
+      responses:
+        '200':
+          description: Updated recipe
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-groups:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListCustomizationGroups
+      responses:
+        '200':
+          description: All groups with all options (including inactive)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AdminCustomizationGroup'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateCustomizationGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CustomizationGroupWrite'}
+      responses:
+        '201':
+          description: Created group
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminCustomizationGroup'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-groups/{groupId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateCustomizationGroup
+      description: Full replacement of writable fields. selectionType cannot change once options exist (409).
+      parameters:
+        - {$ref: '#/components/parameters/GroupId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CustomizationGroupWrite'}
+      responses:
+        '200':
+          description: Updated group
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminCustomizationGroup'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-groups/{groupId}/options:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateCustomizationOption
+      parameters:
+        - {$ref: '#/components/parameters/GroupId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OptionWrite'}
+      responses:
+        '201':
+          description: Created option
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminOption'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-options/{optionId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateCustomizationOption
+      description: Full replacement of writable fields. Past order snapshots are unaffected.
+      parameters:
+        - {$ref: '#/components/parameters/OptionId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OptionWrite'}
+      responses:
+        '200':
+          description: Updated option
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminOption'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/delivery-zones:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListDeliveryZones
+      responses:
+        '200':
+          description: All zones including inactive
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AdminDeliveryZone'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateDeliveryZone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliveryZoneWrite'}
+      responses:
+        '201':
+          description: Created zone
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminDeliveryZone'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/delivery-zones/{zoneId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateDeliveryZone
+      description: Full replacement of writable fields. Activating a zone without deliveryFee returns 422. Existing orders keep their fee snapshot.
+      parameters:
+        - {$ref: '#/components/parameters/ZoneId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliveryZoneWrite'}
+      responses:
+        '200':
+          description: Updated zone
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminDeliveryZone'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/delivery-slots:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListSlots
+      parameters:
+        - {name: from, in: query, required: true, description: 'Asia/Dhaka date, inclusive', schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, description: 'Asia/Dhaka date, inclusive, max 62 days after from', schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: Slots with capacity and reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AdminDeliverySlot'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateSlot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliverySlotWrite'}
+      responses:
+        '201':
+          description: Slot created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliverySlot'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/delivery-slots/{slotId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateSlot
+      summary: Change capacity or open/close a slot (v1.1)
+      description: capacityUnits below current reserved units returns 409. Closing a slot keeps existing reservations.
+      parameters:
+        - {$ref: '#/components/parameters/SlotId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliverySlotUpdate'}
+      responses:
+        '200':
+          description: Updated slot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminDeliverySlot'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/inventory:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListInventory
+      summary: Ingredients with on-hand, reserved and available (v1.1)
+      responses:
+        '200':
+          description: Ingredients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Ingredient'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateIngredient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IngredientCreate'}
+      responses:
+        '201':
+          description: Created ingredient (an INITIAL movement is recorded when onHand > 0)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Ingredient'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/inventory/{ingredientId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminAdjustInventory
+      description: Sets on-hand quantity, recording an ADJUSTMENT movement with reason. Below reserved returns 409.
+      parameters:
+        - {name: ingredientId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [onHand, reason]
+              properties:
+                onHand: {type: number, minimum: 0}
+                reason: {type: string, minLength: 3, maxLength: 300}
+      responses:
+        '200':
+          description: Inventory updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Ingredient'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/inventory/{ingredientId}/movements:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListInventoryMovements
+      parameters:
+        - {name: ingredientId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: Movements, newest first
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InventoryMovementPage'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/payments:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListPayments
+      summary: Payments, e.g. manual submissions awaiting verification (v1.1)
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/PaymentStatus'}}
+        - {name: method, in: query, schema: {$ref: '#/components/schemas/PaymentMethod'}}
+        - {name: awaitingVerification, in: query, description: Only MANUAL payments with an open submission, schema: {type: boolean}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200':
+          description: Payments
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminPaymentPage'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/payments/{paymentId}/proof:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminDownloadPaymentProof
+      description: Downloads the proof file of the latest submission, as an attachment.
+      parameters:
+        - {$ref: '#/components/parameters/PaymentId'}
+      responses:
+        '200':
+          description: Proof file
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            application/pdf:
+              schema: {type: string, format: binary}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/payments/{paymentId}/verification:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminVerifyPayment
+      summary: Independent ADMIN decision on a MANUAL payment, or recording COD collection (v1.1)
+      description: |
+        MANUAL + APPROVE: payment SUCCEEDED, order PENDING_PAYMENT -> CONFIRMED.
+        MANUAL + REJECT: payment FAILED, order -> CANCELLED, holds released.
+        COD + APPROVE: records cash collection, payment SUCCEEDED.
+        COD + REJECT and any ONLINE payment: 409. Audited; note required.
+      parameters:
+        - {$ref: '#/components/parameters/PaymentId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PaymentVerificationRequest'}
+      responses:
+        '200':
+          description: Updated payment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminPayment'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/payments/{paymentId}/refunds:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminRequestRefund
+      summary: Open a full refund request for a SUCCEEDED payment (v1.1)
+      parameters:
+        - {$ref: '#/components/parameters/PaymentId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        '201':
+          description: Refund requested
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Refund'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/refunds:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListRefunds
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/RefundStatus'}}
+      responses:
+        '200':
+          description: Refunds
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Refund'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/refunds/{refundId}/decision:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminDecideRefund
+      parameters:
+        - {$ref: '#/components/parameters/RefundId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefundDecisionRequest'}
+      responses:
+        '200':
+          description: Refund APPROVED or REJECTED
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Refund'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/refunds/{refundId}/completion:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCompleteRefund
+      description: Records the external refund reference for an APPROVED refund; payment becomes REFUNDED.
+      parameters:
+        - {$ref: '#/components/parameters/RefundId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefundCompletionRequest'}
+      responses:
+        '200':
+          description: Refund COMPLETED
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Refund'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/payment-reconciliation-cases:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListReconciliationCases
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [OPEN, RESOLVED]}}
+      responses:
+        '200':
+          description: Reconciliation cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ReconciliationCase'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/payment-reconciliation-cases/{caseId}/resolution:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminResolveReconciliationCase
+      description: |
+        REINSTATE re-reserves slot and inventory under locks and moves an EXPIRED
+        order to CONFIRMED; 409 if capacity or stock is no longer available.
+        REQUEST_REFUND opens a refund request. NO_ACTION closes the case.
+      parameters:
+        - {$ref: '#/components/parameters/CaseId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReconciliationResolutionRequest'}
+      responses:
+        '200':
+          description: Resolved case
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReconciliationCase'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/dashboard/summary:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminDashboardSummary
+      responses:
+        '200':
+          description: Sales and operations summary for the current Asia/Dhaka day
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ordersToday, revenueToday, pendingOrders, preparingOrders]
+                properties:
+                  ordersToday: {type: integer}
+                  revenueToday:
+                    allOf:
+                      - {$ref: '#/components/schemas/Money'}
+                    description: Booked revenue — total of today's orders not in PENDING_PAYMENT, CANCELLED or EXPIRED.
+                  pendingOrders: {type: integer}
+                  preparingOrders: {type: integer}
+                  collectedToday: {$ref: '#/components/schemas/Money'}
+                  awaitingPaymentVerification: {type: integer}
+                  openReconciliationCases: {type: integer}
+                  lowStockIngredients: {type: integer}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/reports/daily-sales:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminDailySalesReport
+      summary: Per-day sales between two Asia/Dhaka dates (v1.1)
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, description: 'Asia/Dhaka date, inclusive, max 366 days after from', schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: One row per day
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DailySalesRow'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema: {type: string}
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    OptionId:
+      name: optionId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    ZoneId:
+      name: zoneId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    SlotId:
+      name: slotId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    RefundId:
+      name: refundId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 0, default: 0}
+    Size:
+      name: size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unauthorized:
+      description: Unauthenticated
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Forbidden:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Conflict:
+      description: Capacity, inventory or state conflict
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unprocessable:
+      description: Invalid business input
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    PayloadTooLarge:
+      description: Upload exceeds the size limit
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema: {type: integer}
+          description: Seconds to wait
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    Uuid: {type: string, format: uuid}
+    Money:
+      type: number
+      format: double
+      minimum: 0
+      description: BDT amount with two decimal places; use decimal type in backend.
+    Quantity:
+      type: number
+      minimum: 0
+      description: Ingredient quantity, up to three decimal places, in the ingredient's unit.
+    User:
+      type: object
+      required: [id, fullName, phone, role]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        fullName: {type: string}
+        phone: {type: string}
+        email: {type: string, format: email, nullable: true}
+        role: {type: string, enum: [CUSTOMER, ADMIN]}
+    RegisterRequest:
+      type: object
+      required: [fullName, phone, password]
+      properties:
+        fullName: {type: string, minLength: 2, maxLength: 150}
+        phone: {type: string, pattern: '^\+8801[3-9][0-9]{8}$'}
+        email: {type: string, format: email}
+        password: {type: string, minLength: 12, maxLength: 128}
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: {type: string, description: Phone (+8801XXXXXXXXX) or email}
+        password: {type: string}
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: {type: string}
+        tokenType: {type: string, enum: [Bearer]}
+        expiresIn: {type: integer, description: Seconds}
+        user: {$ref: '#/components/schemas/User'}
+    Category:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+    AdminCategory:
+      allOf:
+        - {$ref: '#/components/schemas/Category'}
+        - type: object
+          required: [sortOrder, active]
+          properties:
+            sortOrder: {type: integer}
+            active: {type: boolean}
+    CategoryWrite:
+      type: object
+      required: [name, slug]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 100}
+        slug: {type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 120}
+        sortOrder: {type: integer, default: 0}
+        active: {type: boolean, default: true}
+    Option:
+      type: object
+      required: [id, name, priceDelta]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        priceDelta: {$ref: '#/components/schemas/Money'}
+    AdminOption:
+      allOf:
+        - {$ref: '#/components/schemas/Option'}
+        - type: object
+          required: [groupId, active]
+          properties:
+            groupId: {$ref: '#/components/schemas/Uuid'}
+            active: {type: boolean}
+    OptionWrite:
+      type: object
+      required: [name, priceDelta]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        priceDelta: {$ref: '#/components/schemas/Money'}
+        active: {type: boolean, default: true}
+    CustomizationGroup:
+      type: object
+      required: [id, code, selectionType, required, minSelections, maxSelections, options]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        name: {type: string, description: Display name (v1.1)}
+        selectionType: {type: string, enum: [SINGLE, MULTIPLE, TEXT]}
+        required: {type: boolean}
+        minSelections: {type: integer, minimum: 0}
+        maxSelections: {type: integer, minimum: 1}
+        textMaxLength:
+          type: integer
+          minimum: 1
+          maximum: 250
+          nullable: true
+          description: TEXT groups only; product-specific limit enforced by the server (v1.1)
+        options:
+          type: array
+          items: {$ref: '#/components/schemas/Option'}
+    AdminCustomizationGroup:
+      type: object
+      required: [id, code, name, selectionType, minSelections, maxSelections, options]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        name: {type: string}
+        selectionType: {type: string, enum: [SINGLE, MULTIPLE, TEXT]}
+        minSelections: {type: integer, minimum: 0}
+        maxSelections: {type: integer, minimum: 1}
+        options:
+          type: array
+          items: {$ref: '#/components/schemas/AdminOption'}
+    CustomizationGroupWrite:
+      type: object
+      required: [code, name, selectionType, minSelections, maxSelections]
+      properties:
+        code: {type: string, pattern: '^[A-Z0-9_]{2,80}$'}
+        name: {type: string, minLength: 1, maxLength: 100}
+        selectionType: {type: string, enum: [SINGLE, MULTIPLE, TEXT]}
+        minSelections: {type: integer, minimum: 0}
+        maxSelections: {type: integer, minimum: 1}
+    ProductCustomizationAssignment:
+      type: object
+      required: [groupId, required, allowedOptionIds]
+      properties:
+        groupId: {$ref: '#/components/schemas/Uuid'}
+        required: {type: boolean}
+        allowedOptionIds:
+          type: array
+          uniqueItems: true
+          description: Must belong to the group; empty for TEXT groups.
+          items: {$ref: '#/components/schemas/Uuid'}
+        textMaxLength: {type: integer, minimum: 1, maximum: 250, nullable: true}
+    Product:
+      type: object
+      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+        categoryId: {$ref: '#/components/schemas/Uuid'}
+        description: {type: string, nullable: true}
+        imageUrl: {type: string, nullable: true}
+        basePrice: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+        minLeadHours: {type: integer, minimum: 0}
+        cancellationCutoffHours: {type: integer, minimum: 0, description: Hours before slot start after which customer cancellation closes (v1.1)}
+        customizationGroups:
+          type: array
+          items: {$ref: '#/components/schemas/CustomizationGroup'}
+    ProductPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          items: {$ref: '#/components/schemas/Product'}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer}
+    ProductStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, ARCHIVED]
+    AdminProduct:
+      allOf:
+        - {$ref: '#/components/schemas/Product'}
+        - type: object
+          required: [status, productionUnits, cancellationCutoffHours, createdAt, updatedAt]
+          properties:
+            status: {$ref: '#/components/schemas/ProductStatus'}
+            productionUnits: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+    AdminProductPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          items: {$ref: '#/components/schemas/AdminProduct'}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer}
+    ProductWrite:
+      type: object
+      required: [categoryId, name, slug, basePrice, minLeadHours, productionUnits]
+      properties:
+        categoryId: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+        description: {type: string}
+        basePrice: {$ref: '#/components/schemas/Money'}
+        minLeadHours: {type: integer, minimum: 0}
+        productionUnits: {type: integer, minimum: 1}
+        status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
+        cancellationCutoffHours: {type: integer, minimum: 0, maximum: 720, default: 24, description: v1.1}
+        imageUrl: {type: string, format: uri, nullable: true, description: https only (v1.1)}
+    ProductIngredientLine:
+      type: object
+      required: [ingredientId, quantityPerUnit]
+      properties:
+        ingredientId: {$ref: '#/components/schemas/Uuid'}
+        ingredientName: {type: string, readOnly: true}
+        unit: {type: string, readOnly: true}
+        quantityPerUnit:
+          allOf:
+            - {$ref: '#/components/schemas/Quantity'}
+          description: Must be greater than zero.
+    DeliverySlot:
+      type: object
+      required: [id, startAt, endAt, remainingUnits]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        remainingUnits: {type: integer, minimum: 0}
+    AdminDeliverySlot:
+      allOf:
+        - {$ref: '#/components/schemas/DeliverySlot'}
+        - type: object
+          required: [capacityUnits, reservedUnits, active]
+          properties:
+            capacityUnits: {type: integer, minimum: 1}
+            reservedUnits: {type: integer, minimum: 0}
+            active: {type: boolean}
+    DeliverySlotWrite:
+      type: object
+      required: [startAt, endAt, capacityUnits]
+      properties:
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        capacityUnits: {type: integer, minimum: 1}
+        active: {type: boolean, default: true}
+    DeliverySlotUpdate:
+      type: object
+      required: [capacityUnits, active]
+      properties:
+        capacityUnits: {type: integer, minimum: 1}
+        active: {type: boolean}
+    DeliveryZone:
+      type: object
+      required: [code, name, deliveryFee]
+      properties:
+        code: {type: string}
+        name: {type: string}
+        deliveryFee: {$ref: '#/components/schemas/Money'}
+        minOrderAmount:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          nullable: true
+    AdminDeliveryZone:
+      type: object
+      required: [id, code, name, active, sortOrder]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        name: {type: string}
+        deliveryFee:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          nullable: true
+        minOrderAmount:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          nullable: true
+        active: {type: boolean}
+        sortOrder: {type: integer}
+    DeliveryZoneWrite:
+      type: object
+      required: [code, name, active]
+      properties:
+        code: {type: string, pattern: '^[A-Z0-9_]{2,60}$'}
+        name: {type: string, minLength: 2, maxLength: 120}
+        deliveryFee:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          nullable: true
+          description: Required to activate the zone.
+        minOrderAmount:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          nullable: true
+        active: {type: boolean}
+        sortOrder: {type: integer, default: 0}
+    Ingredient:
+      type: object
+      required: [id, name, unit, onHand, reserved, available]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        unit: {type: string}
+        onHand: {$ref: '#/components/schemas/Quantity'}
+        reserved: {$ref: '#/components/schemas/Quantity'}
+        available: {$ref: '#/components/schemas/Quantity'}
+        lowStockThreshold:
+          allOf:
+            - {$ref: '#/components/schemas/Quantity'}
+          nullable: true
+    IngredientCreate:
+      type: object
+      required: [name, unit]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 120}
+        unit: {type: string, minLength: 1, maxLength: 20}
+        onHand:
+          allOf:
+            - {$ref: '#/components/schemas/Quantity'}
+          default: 0
+        lowStockThreshold:
+          allOf:
+            - {$ref: '#/components/schemas/Quantity'}
+          nullable: true
+    InventoryMovement:
+      type: object
+      required: [id, ingredientId, movementType, quantityDelta, onHandAfter, actorType, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        ingredientId: {$ref: '#/components/schemas/Uuid'}
+        movementType: {type: string, enum: [INITIAL, ADJUSTMENT, CONSUMPTION]}
+        quantityDelta: {type: number, description: Signed change in on-hand}
+        onHandAfter: {$ref: '#/components/schemas/Quantity'}
+        orderId:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        actorType: {$ref: '#/components/schemas/ActorType'}
+        actorUserId:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        reason: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+    InventoryMovementPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          items: {$ref: '#/components/schemas/InventoryMovement'}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer}
+    CartLine:
+      type: object
+      required: [productId, quantity, selectedOptionIds, customTexts]
+      properties:
+        productId: {$ref: '#/components/schemas/Uuid'}
+        quantity: {type: integer, minimum: 1, maximum: 50}
+        selectedOptionIds:
+          type: array
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        customTexts:
+          type: object
+          additionalProperties: {type: string, maxLength: 250}
+          description: Map of customization group UUID to text.
+    DeliveryAddress:
+      type: object
+      required: [name, phone, area, address]
+      properties:
+        name: {type: string, maxLength: 150}
+        phone: {type: string, description: 'Server requires a normalized Bangladeshi mobile number (+8801XXXXXXXXX); otherwise 422.'}
+        area: {type: string, maxLength: 120, description: 'Delivery zone code from GET /delivery-zones (v1.1). Must be an active, fee-configured zone; otherwise 422.'}
+        address: {type: string, minLength: 5, description: Server limit 500 characters.}
+        notes: {type: string, description: Server limit 500 characters.}
+    CheckoutQuoteRequest:
+      type: object
+      required: [deliverySlotId, delivery, items]
+      properties:
+        deliverySlotId: {$ref: '#/components/schemas/Uuid'}
+        delivery: {$ref: '#/components/schemas/DeliveryAddress'}
+        items:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/CartLine'}
+    CheckoutQuote:
+      type: object
+      required: [subtotal, deliveryFee, discount, total, currency]
+      properties:
+        subtotal: {$ref: '#/components/schemas/Money'}
+        deliveryFee: {$ref: '#/components/schemas/Money'}
+        discount: {$ref: '#/components/schemas/Money'}
+        total: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+    PlaceOrderRequest:
+      allOf:
+        - {$ref: '#/components/schemas/CheckoutQuoteRequest'}
+        - type: object
+          required: [idempotencyKey, paymentMethod]
+          properties:
+            idempotencyKey: {$ref: '#/components/schemas/Uuid'}
+            paymentMethod: {type: string, enum: [COD, MANUAL, ONLINE]}
+    CancelOrderRequest:
+      type: object
+      properties:
+        reason: {type: string, maxLength: 500}
+    OrderStatus:
+      type: string
+      enum: [PENDING_PAYMENT, CONFIRMED, PREPARING, READY, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, EXPIRED]
+    PaymentStatus:
+      type: string
+      enum: [PENDING, SUCCEEDED, FAILED, CANCELLED, REFUNDED]
+    PaymentMethod:
+      type: string
+      enum: [COD, MANUAL, ONLINE]
+    ManualPaymentProvider:
+      type: string
+      enum: [BANK_TRANSFER, BKASH, NAGAD, ROCKET, OTHER]
+    ManualSubmissionStatus:
+      type: string
+      enum: [SUBMITTED, VERIFIED, REJECTED]
+    RefundStatus:
+      type: string
+      enum: [REQUESTED, APPROVED, REJECTED, COMPLETED]
+    ActorType:
+      type: string
+      enum: [CUSTOMER, ADMIN, SYSTEM, GATEWAY]
+    Order:
+      type: object
+      required: [orderId, orderNumber, status, paymentStatus, subtotal, deliveryFee, discount, total, currency]
+      properties:
+        orderId: {$ref: '#/components/schemas/Uuid'}
+        orderNumber: {type: string}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        paymentStatus: {$ref: '#/components/schemas/PaymentStatus'}
+        subtotal: {$ref: '#/components/schemas/Money'}
+        deliveryFee: {$ref: '#/components/schemas/Money'}
+        discount: {$ref: '#/components/schemas/Money'}
+        total: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+        paymentMethod: {$ref: '#/components/schemas/PaymentMethod'}
+        createdAt: {type: string, format: date-time, description: v1.1}
+    OrderItemCustomization:
+      type: object
+      required: [groupId, groupName, priceDelta]
+      description: Immutable snapshot; text is plain text and must be rendered escaped.
+      properties:
+        groupId: {$ref: '#/components/schemas/Uuid'}
+        groupName: {type: string}
+        optionId:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        optionName: {type: string, nullable: true}
+        textValue: {type: string, nullable: true}
+        priceDelta: {$ref: '#/components/schemas/Money'}
+    OrderLine:
+      type: object
+      required: [productId, productName, quantity, unitBasePrice, unitOptionsPrice, unitPrice, lineTotal, customizations]
+      description: Immutable snapshot taken at placement.
+      properties:
+        productId: {$ref: '#/components/schemas/Uuid'}
+        productName: {type: string}
+        quantity: {type: integer, minimum: 1}
+        unitBasePrice: {$ref: '#/components/schemas/Money'}
+        unitOptionsPrice: {$ref: '#/components/schemas/Money'}
+        unitPrice: {$ref: '#/components/schemas/Money'}
+        lineTotal: {$ref: '#/components/schemas/Money'}
+        customizations:
+          type: array
+          items: {$ref: '#/components/schemas/OrderItemCustomization'}
+    OrderDelivery:
+      type: object
+      required: [name, phone, zoneCode, zoneName, address, slotStartAt, slotEndAt]
+      properties:
+        name: {type: string}
+        phone: {type: string}
+        zoneCode: {type: string}
+        zoneName: {type: string}
+        address: {type: string}
+        notes: {type: string, nullable: true}
+        slotId: {$ref: '#/components/schemas/Uuid'}
+        slotStartAt: {type: string, format: date-time}
+        slotEndAt: {type: string, format: date-time}
+    OrderStatusEvent:
+      type: object
+      required: [status, at]
+      description: Customer-safe history entry (no actor identities or admin notes).
+      properties:
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        at: {type: string, format: date-time}
+    OrderPaymentSummary:
+      type: object
+      required: [method, status]
+      description: Customer-safe payment view; no gateway identifiers or verification notes.
+      properties:
+        method: {$ref: '#/components/schemas/PaymentMethod'}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        manualSubmissionStatus:
+          allOf:
+            - {$ref: '#/components/schemas/ManualSubmissionStatus'}
+          nullable: true
+        refundStatus:
+          allOf:
+            - {$ref: '#/components/schemas/RefundStatus'}
+          nullable: true
+    OrderDetail:
+      description: Customer order detail (v1.1). Superset of Order.
+      allOf:
+        - {$ref: '#/components/schemas/Order'}
+        - type: object
+          required: [paymentMethod, items, delivery, payment, statusHistory, createdAt, updatedAt, cancellationDeadline, cancellable]
+          properties:
+            items:
+              type: array
+              items: {$ref: '#/components/schemas/OrderLine'}
+            delivery: {$ref: '#/components/schemas/OrderDelivery'}
+            payment: {$ref: '#/components/schemas/OrderPaymentSummary'}
+            statusHistory:
+              type: array
+              items: {$ref: '#/components/schemas/OrderStatusEvent'}
+            updatedAt: {type: string, format: date-time}
+            expiresAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Payment hold expiry for PENDING_PAYMENT orders.
+            cancellationDeadline: {type: string, format: date-time}
+            cancellable: {type: boolean, description: Whether the customer may cancel now.}
+    AdminOrderStatusEvent:
+      type: object
+      required: [toStatus, actorType, at]
+      properties:
+        fromStatus:
+          allOf:
+            - {$ref: '#/components/schemas/OrderStatus'}
+          nullable: true
+        toStatus: {$ref: '#/components/schemas/OrderStatus'}
+        actorType: {$ref: '#/components/schemas/ActorType'}
+        actorUserId:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        reason: {type: string, nullable: true}
+        at: {type: string, format: date-time}
+    ManualPaymentSubmission:
+      type: object
+      required: [id, paymentId, provider, transactionReference, status, hasProof, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        paymentId: {$ref: '#/components/schemas/Uuid'}
+        provider: {$ref: '#/components/schemas/ManualPaymentProvider'}
+        transactionReference: {type: string}
+        status: {$ref: '#/components/schemas/ManualSubmissionStatus'}
+        hasProof: {type: boolean}
+        createdAt: {type: string, format: date-time}
+    AdminPayment:
+      type: object
+      required: [id, orderId, orderNumber, method, amount, currency, status, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        orderId: {$ref: '#/components/schemas/Uuid'}
+        orderNumber: {type: string}
+        method: {$ref: '#/components/schemas/PaymentMethod'}
+        provider: {type: string, nullable: true}
+        providerTransactionId: {type: string, nullable: true}
+        amount: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        failureReason: {type: string, nullable: true}
+        verifiedBy:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        verifiedAt: {type: string, format: date-time, nullable: true}
+        verificationNote: {type: string, nullable: true}
+        latestSubmission:
+          allOf:
+            - {$ref: '#/components/schemas/ManualPaymentSubmission'}
+          nullable: true
+        createdAt: {type: string, format: date-time}
+    AdminPaymentPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          items: {$ref: '#/components/schemas/AdminPayment'}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer}
+    PaymentVerificationRequest:
+      type: object
+      required: [decision, note]
+      properties:
+        decision: {type: string, enum: [APPROVE, REJECT]}
+        note: {type: string, minLength: 3, maxLength: 500, description: e.g. statement line checked}
+    Refund:
+      type: object
+      required: [id, paymentId, orderId, amount, currency, status, requestReason, requestedByType, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        paymentId: {$ref: '#/components/schemas/Uuid'}
+        orderId: {$ref: '#/components/schemas/Uuid'}
+        amount: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+        status: {$ref: '#/components/schemas/RefundStatus'}
+        requestReason: {type: string}
+        requestedByType: {$ref: '#/components/schemas/ActorType'}
+        decidedBy:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+        decidedAt: {type: string, format: date-time, nullable: true}
+        decisionNote: {type: string, nullable: true}
+        externalReference: {type: string, nullable: true}
+        completedAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+    RefundDecisionRequest:
+      type: object
+      required: [decision, note]
+      properties:
+        decision: {type: string, enum: [APPROVE, REJECT]}
+        note: {type: string, minLength: 3, maxLength: 500}
+    RefundCompletionRequest:
+      type: object
+      required: [externalReference]
+      properties:
+        externalReference: {type: string, minLength: 3, maxLength: 150}
+    ReconciliationCase:
+      type: object
+      required: [id, paymentId, orderId, caseType, status, createdAt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        paymentId: {$ref: '#/components/schemas/Uuid'}
+        orderId: {$ref: '#/components/schemas/Uuid'}
+        caseType: {type: string, enum: [LATE_SUCCESS, AMOUNT_MISMATCH, AMBIGUOUS_STATUS]}
+        status: {type: string, enum: [OPEN, RESOLVED]}
+        resolution: {type: string, enum: [REINSTATED, REFUND_REQUESTED, NO_ACTION], nullable: true}
+        resolutionNote: {type: string, nullable: true}
+        resolvedAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+    ReconciliationResolutionRequest:
+      type: object
+      required: [action, note]
+      properties:
+        action: {type: string, enum: [REINSTATE, REQUEST_REFUND, NO_ACTION]}
+        note: {type: string, minLength: 3, maxLength: 500}
+    AdminOrderDetail:
+      description: Admin order detail (v1.1). Adds customer identity, full history, payments and refunds.
+      allOf:
+        - {$ref: '#/components/schemas/OrderDetail'}
+        - type: object
+          required: [customerUserId, customerName, customerPhone, statusEvents, payments, refunds]
+          properties:
+            customerUserId: {$ref: '#/components/schemas/Uuid'}
+            customerName: {type: string}
+            customerPhone: {type: string}
+            statusEvents:
+              type: array
+              items: {$ref: '#/components/schemas/AdminOrderStatusEvent'}
+            payments:
+              type: array
+              items: {$ref: '#/components/schemas/AdminPayment'}
+            refunds:
+              type: array
+              items: {$ref: '#/components/schemas/Refund'}
+    DailySalesRow:
+      type: object
+      required: [date, orderCount, bookedRevenue, collectedRevenue, cancelledCount]
+      properties:
+        date: {type: string, format: date}
+        orderCount: {type: integer}
+        bookedRevenue: {$ref: '#/components/schemas/Money'}
+        collectedRevenue: {$ref: '#/components/schemas/Money'}
+        cancelledCount: {type: integer}
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code: {type: string}
+        traceId: {type: string}
