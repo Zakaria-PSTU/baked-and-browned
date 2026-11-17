@@ -20,6 +20,11 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+logging:
+  pattern:
+    # Prefix each log line with the request's trace id (TraceIdFilter), matching problem+json traceId.
+    correlation: "[%X{traceId:-}] "
+
 management:
   endpoints:
     web:
