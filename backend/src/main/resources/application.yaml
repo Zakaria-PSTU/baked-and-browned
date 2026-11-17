@@ -1,6 +1,24 @@
 spring:
   application:
     name: baked-and-browned-api
+  datasource:
+    # Defaults match infra/docker/compose.yaml for local development.
+    # The password is never stored here: set SPRING_DATASOURCE_PASSWORD in the environment.
+    url: jdbc:postgresql://localhost:5432/bakedandbrowned
+    username: bakedandbrowned
+  jpa:
+    # No lazy loading during view rendering; transactions end in the service layer.
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema (ADR-0015); Hibernate only validates it. Never "update".
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          # Instants are written and read as UTC regardless of the JVM default zone.
+          time_zone: UTC
+  flyway:
+    locations: classpath:db/migration
 
 management:
   endpoints:
