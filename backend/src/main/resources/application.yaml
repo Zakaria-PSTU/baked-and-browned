@@ -27,8 +27,8 @@ spring:
   task:
     scheduling:
       pool:
-        # Outbox dispatch, hold expiry and housekeeping must not wait behind each other.
-        size: 3
+        # Outbox dispatch, hold expiry, payment reconciliation and housekeeping must not wait behind each other.
+        size: 4
 
 server:
   # Honor X-Forwarded-For/-Proto only from trusted internal proxies (Tomcat RemoteIpValve), so
@@ -102,6 +102,16 @@ app:
       customer-country: Bangladesh
       connect-timeout: 5s
       read-timeout: 20s
+    reconciliation:
+      # ReconciliationJob: asks gateways about ONLINE payments whose callback may have been missed.
+      interval: PT1M
+      batch-size: 50
+      # Leave the provider callback this long before asking.
+      min-age: 2m
+      # Shortest wait between asks about one payment; grows to a quarter of its age.
+      recheck: 5m
+      # Stop asking after this; a payment whose last ask failed then becomes an AMBIGUOUS_STATUS case.
+      lookback: 48h
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
       checkout-base-url: http://localhost:4200/dev/fake-gateway

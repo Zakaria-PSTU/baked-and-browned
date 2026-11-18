@@ -14,8 +14,10 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.bakedandbrowned.common.outbox.OutboxPublisher;
+import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.inventory.service.StockReservations;
 import com.bakedandbrowned.ordering.service.OrderClosing.Actor;
+import com.bakedandbrowned.scheduling.service.SlotCapacity;
 
 /**
  * The ordering side of payment decisions, for the payment module. Every method runs in the
@@ -31,10 +33,15 @@ public class OrderPaymentOutcomes {
 
 	private final StockReservations stock;
 
+	public static final String SLOT_UNAVAILABLE = "SLOT_UNAVAILABLE";
+
 	private final OutboxPublisher outbox;
 
+	private final SlotCapacity slotCapacity;
+
 	public OrderPaymentOutcomes(JdbcTemplate jdbc, OrderClosing closing, StockReservations stock,
-			OutboxPublisher outbox) {
+			OutboxPublisher outbox, SlotCapacity slotCapacity) {
+		this.slotCapacity = slotCapacity;
 		this.jdbc = jdbc;
 		this.closing = closing;
 		this.stock = stock;
@@ -97,6 +104,35 @@ public class OrderPaymentOutcomes {
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void confirmPaidByGateway(UUID orderId) {
 		confirm(orderId, "GATEWAY", null);
+	}
+
+	/**
+	 * An ADMIN reinstates an EXPIRED order whose payment arrived late (architecture, Order state
+	 * machine): the slot and stock are reserved again under locks (slot, then ingredients by id, as at
+	 * checkout), only if they are still available now, and the order becomes CONFIRMED.
+	 * @throws ApiException 409 {@link #SLOT_UNAVAILABLE} or {@code INSUFFICIENT_STOCK}; nothing changes
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void reinstatePaid(UUID orderId, UUID adminId, String note, Instant now) {
+		requireStatus(orderId, "EXPIRED");
+		Map<String, Object> slot = jdbc.queryForMap("""
+				SELECT id, slot_id, reserved_units, status::text AS status FROM slot_reservations
+				WHERE order_id = ? FOR UPDATE""", orderId);
+		if (!"RELEASED".equals(slot.get("status"))) {
+			throw new IllegalStateException("Expired order " + orderId + " still holds its slot");
+		}
+		if (!slotCapacity.tryReserve((UUID) slot.get("slot_id"), (Integer) slot.get("reserved_units"), now)) {
+			throw ApiException.conflict(SLOT_UNAVAILABLE,
+					"The order's delivery slot has started, closed or filled up; it cannot be reinstated.");
+		}
+		jdbc.update("UPDATE slot_reservations SET status = 'CONFIRMED', released_at = NULL WHERE id = ?",
+				slot.get("id"));
+		stock.reinstate(orderId);
+		jdbc.update("UPDATE orders SET status = 'CONFIRMED' WHERE id = ?", orderId);
+		jdbc.update("""
+				INSERT INTO order_status_history (order_id, from_status, to_status, actor_type, actor_user_id, reason)
+				VALUES (?, 'EXPIRED', 'CONFIRMED', 'ADMIN', ?, ?)""", orderId, adminId, note);
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.CONFIRMED, Map.of("orderId", orderId.toString()));
 	}
 
 	private void confirm(UUID orderId, String actorType, @Nullable UUID actorUserId) {

@@ -17,6 +17,22 @@ public final class PaymentDtos {
 	private PaymentDtos() {
 	}
 
+	/** Contract {@code ReconciliationCase}; {@code reason} is the case's machine-readable cause, if recorded. */
+	public record ReconciliationCase(UUID id, UUID paymentId, UUID orderId, String orderNumber, String caseType,
+			String status, @Nullable String reason, @Nullable String resolution, @Nullable String resolutionNote,
+			@Nullable Instant resolvedAt, Instant createdAt) {
+	}
+
+	/** Contract {@code ReconciliationResolutionRequest}. */
+	public record ReconciliationResolutionRequest(@NotNull Action action,
+			@NotBlank @Size(min = 3, max = 500) String note) {
+
+		public enum Action {
+			REINSTATE, REQUEST_REFUND, NO_ACTION
+		}
+
+	}
+
 	/** Contract {@code initiatePayment} 200 body: where to send the customer's browser. */
 	public record PaymentInitiation(UUID paymentId, java.net.URI checkoutUrl) {
 	}

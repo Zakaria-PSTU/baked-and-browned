@@ -63,7 +63,7 @@ Use a unique `(user_id, idempotency_key)` constraint. Handle concurrent duplicat
 |---|---|---|---|
 | — | CONFIRMED | COD placement (customer) | slot+inventory reservations CONFIRMED |
 | — | PENDING_PAYMENT | ONLINE/MANUAL placement (customer) | reservations HELD, 15-min hold |
-| PENDING_PAYMENT | CONFIRMED | verified gateway success (GATEWAY) or manual verification (ADMIN, payments endpoint only) | reservations CONFIRMED |
+| PENDING_PAYMENT | CONFIRMED | verified gateway success (GATEWAY), manual verification (ADMIN, payments endpoint only), or ADMIN reinstating a payment held for review (HIGH_RISK case) | reservations CONFIRMED |
 | PENDING_PAYMENT | EXPIRED | expiry job (SYSTEM) | release holds once |
 | PENDING_PAYMENT | CANCELLED | customer (before deadline), ADMIN (reason), manual rejection (ADMIN) | release holds once |
 | CONFIRMED | CANCELLED | customer (before deadline) or ADMIN (reason) | release once; refund request if paid |
@@ -82,7 +82,7 @@ The generic `PATCH /admin/orders/{id}/status` cannot move an order out of PENDIN
 
 ## Scheduled workers
 - Hold expiry: every minute, claim overdue PENDING_PAYMENT orders with `FOR UPDATE SKIP LOCKED`, re-check, expire, release once.
-- Reconciliation: query gateway status for stale ONLINE sessions (Phase 3).
+- Reconciliation (`ReconciliationJob`): every minute, claim ONLINE payments still PENDING or CANCELLED between 2 minutes and 48 hours old (one guarded UPDATE each), query the gateway outside any transaction and apply the answer like a callback; checks back off to a quarter of the payment's age. A payment that ages out while its last check failed becomes an AMBIGUOUS_STATUS case.
 - Outbox dispatcher: claim due events with `SKIP LOCKED`, deliver, exponential backoff via `next_attempt_at`, alert on backlog.
 
 ## Pricing and time

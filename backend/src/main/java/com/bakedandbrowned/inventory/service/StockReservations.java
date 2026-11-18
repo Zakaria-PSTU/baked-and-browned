@@ -128,6 +128,33 @@ public class StockReservations {
 		return live.size();
 	}
 
+	/**
+	 * A released order is reinstated (ADMIN resolving a late payment): its RELEASED reservations are
+	 * reserved again, in ingredient-id order, and become CONFIRMED. All or nothing: the caller's
+	 * transaction rolls back on the 409.
+	 * @throws ApiException 409 {@link #INSUFFICIENT_STOCK} if any ingredient lacks available stock now
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public int reinstate(UUID orderId) {
+		List<Map<String, Object>> released = jdbc.queryForList("""
+				SELECT id, ingredient_id, quantity FROM inventory_reservations
+				WHERE order_id = ? AND status = 'RELEASED'
+				ORDER BY ingredient_id FOR UPDATE""", orderId);
+		for (Map<String, Object> r : released) {
+			BigDecimal quantity = (BigDecimal) r.get("quantity");
+			int updated = jdbc.update("""
+					UPDATE ingredients SET reserved = reserved + ?
+					WHERE id = ? AND on_hand - reserved >= ?""", quantity, r.get("ingredient_id"), quantity);
+			if (updated != 1) {
+				throw ApiException.conflict(INSUFFICIENT_STOCK,
+						"There is no longer enough stock to reinstate this order.");
+			}
+			jdbc.update("UPDATE inventory_reservations SET status = 'CONFIRMED', released_at = NULL WHERE id = ?",
+					r.get("id"));
+		}
+		return released.size();
+	}
+
 	/** Still-live reservations of the order, locked, in ingredient-id order (consistent lock order). */
 	private List<Map<String, Object>> lockLive(UUID orderId) {
 		return jdbc.queryForList("""

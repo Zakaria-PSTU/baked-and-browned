@@ -7,7 +7,15 @@ export interface ReconciliationCase {
   createdAt: string;
   id: Uuid;
   orderId: Uuid;
+  orderNumber?: string;
   paymentId: Uuid;
+
+  /**
+   * Machine-readable cause when recorded, for example HIGH_RISK,
+   * SUCCESS_ON_REPLACED_ATTEMPT or GATEWAY_STATUS_UNKNOWN (AMBIGUOUS_STATUS),
+   * PAID_AFTER_ORDER_EXPIRED (LATE_SUCCESS).
+   */
+  reason?: string | null;
   resolution?: ('REINSTATED' | 'REFUND_REQUESTED' | 'NO_ACTION') | null;
   resolutionNote?: string | null;
   resolvedAt?: string | null;

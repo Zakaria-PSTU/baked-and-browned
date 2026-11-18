@@ -610,6 +610,20 @@ ALTER TABLE payments
     CHECK (provider_checkout_url IS NULL OR provider_session_id IS NOT NULL);
 ```
 
+## V9 — payment reconciliation (`V9__payment_reconciliation.sql`)
+ADR-0008, Phase 3C: the reconciliation worker's bookkeeping and the case queue.
+```sql
+-- Reconciliation worker: when the gateway was last asked about a payment, and why the last ask
+-- failed (NULL when it succeeded), so checks back off and unresolved payments surface as cases.
+ALTER TABLE payments
+  ADD COLUMN gateway_checked_at TIMESTAMPTZ,
+  ADD COLUMN gateway_check_error VARCHAR(200);
+CREATE INDEX idx_payments_online_unsettled ON payments(created_at)
+  WHERE method = 'ONLINE' AND provider_session_id IS NOT NULL AND superseded_at IS NULL
+    AND status IN ('PENDING', 'CANCELLED');
+CREATE INDEX idx_reconciliation_cases_status ON payment_reconciliation_cases(status, created_at);
+```
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.

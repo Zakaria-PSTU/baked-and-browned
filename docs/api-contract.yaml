@@ -1143,7 +1143,11 @@ paths:
       description: |
         REINSTATE re-reserves slot and inventory under locks and moves an EXPIRED
         order to CONFIRMED; 409 if capacity or stock is no longer available.
-        REQUEST_REFUND opens a refund request. NO_ACTION closes the case.
+        An order still waiting for payment because it was held for review
+        (HIGH_RISK) is confirmed with the holds it still has. Only for a received,
+        current payment.
+        REQUEST_REFUND opens a refund request over what is left of the payment,
+        for a second ADMIN to approve. NO_ACTION closes the case.
       parameters:
         - {$ref: '#/components/parameters/CaseId'}
       requestBody:
@@ -1160,6 +1164,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/dashboard/summary:
     get:
       tags: [Admin]
@@ -1976,7 +1981,15 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         paymentId: {$ref: '#/components/schemas/Uuid'}
         orderId: {$ref: '#/components/schemas/Uuid'}
+        orderNumber: {type: string}
         caseType: {type: string, enum: [LATE_SUCCESS, AMOUNT_MISMATCH, AMBIGUOUS_STATUS]}
+        reason:
+          type: string
+          nullable: true
+          description: |
+            Machine-readable cause when recorded, for example HIGH_RISK,
+            SUCCESS_ON_REPLACED_ATTEMPT or GATEWAY_STATUS_UNKNOWN (AMBIGUOUS_STATUS),
+            PAID_AFTER_ORDER_EXPIRED (LATE_SUCCESS).
         status: {type: string, enum: [OPEN, RESOLVED]}
         resolution: {type: string, enum: [REINSTATED, REFUND_REQUESTED, NO_ACTION], nullable: true}
         resolutionNote: {type: string, nullable: true}
