@@ -44,7 +44,8 @@ public class CustomizationRulesRepository {
 				var ps = con.prepareStatement("""
 						SELECT pcg.product_id, g.id AS group_id, g.code, g.name AS group_name, g.selection_type,
 						       g.min_selections, g.max_selections, pcg.required, pcg.text_max_length,
-						       o.id AS option_id, o.name AS option_name, o.price_delta, o.active
+						       o.id AS option_id, o.name AS option_name, o.price_delta, o.active,
+						       o.extra_production_units, o.min_lead_hours
 						FROM product_customization_groups pcg
 						JOIN customization_groups g ON g.id = pcg.group_id
 						LEFT JOIN product_customization_options pco
@@ -67,7 +68,8 @@ public class CustomizationRulesRepository {
 				UUID optionId = rs.getObject("option_id", UUID.class);
 				if (optionId != null) {
 					group.options.put(optionId, new OptionRule(optionId, rs.getString("option_name"),
-							Money.of(rs.getBigDecimal("price_delta")), rs.getBoolean("active")));
+							Money.of(rs.getBigDecimal("price_delta")), rs.getBoolean("active"),
+							rs.getInt("extra_production_units"), rs.getObject("min_lead_hours", Integer.class)));
 				}
 			});
 		}

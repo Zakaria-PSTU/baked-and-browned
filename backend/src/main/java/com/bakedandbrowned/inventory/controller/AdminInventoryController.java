@@ -31,7 +31,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
-/** Contract tag {@code Admin}: inventory and product recipes. ADMIN only. */
+/** Contract tag {@code Admin}: inventory, product recipes and option ingredients. ADMIN only. */
 @RestController
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasRole('ADMIN')")
@@ -78,6 +78,17 @@ public class AdminInventoryController {
 	List<RecipeLine> setRecipe(@AuthenticationPrincipal Jwt jwt, @PathVariable("productId") UUID productId,
 			@RequestBody List<@Valid RecipeLine> body) {
 		return recipes.replace(actor(jwt), productId, body);
+	}
+
+	@GetMapping("/customization-options/{optionId}/ingredients")
+	List<RecipeLine> optionRecipe(@PathVariable("optionId") UUID optionId) {
+		return recipes.optionRecipe(optionId);
+	}
+
+	@PutMapping("/customization-options/{optionId}/ingredients")
+	List<RecipeLine> setOptionRecipe(@AuthenticationPrincipal Jwt jwt, @PathVariable("optionId") UUID optionId,
+			@RequestBody List<@Valid RecipeLine> body) {
+		return recipes.replaceOptionRecipe(actor(jwt), optionId, body);
 	}
 
 	private static UUID actor(Jwt jwt) {

@@ -53,7 +53,14 @@
             <ul class="mt-2 space-y-1 text-sm">
               @for (o of g.options; track o.id) {
                 <li class="flex justify-between border-b border-stone-100 py-1">
-                  <span>{{ o.name }}</span>
+                  <span>
+                    {{ o.name }}
+                    @if (o.minLeadHours && o.minLeadHours > p.minLeadHours) {
+                      <span class="ml-1 text-xs text-amber-800" data-testid="option-notice"
+                        >· needs {{ o.minLeadHours }} hours' notice</span
+                      >
+                    }
+                  </span>
                   <span class="text-stone-600">
                     {{ o.priceDelta > 0 ? '+ ' + (o.priceDelta | bdt) : 'Included' }}
                   </span>

@@ -97,6 +97,8 @@ public final class SelectionValidator {
 
 		List<ValidatedCustomization.Choice> choices = new ArrayList<>();
 		Money total = Money.ZERO;
+		int extraUnits = 0;
+		ValidatedCustomization.@Nullable OptionLead strictest = null;
 		for (GroupRule group : rules.groups()) {
 			int count;
 			if (group.type() == SelectionType.TEXT) {
@@ -113,6 +115,11 @@ public final class SelectionValidator {
 						count++;
 						choices.add(ValidatedCustomization.Choice.option(group, option));
 						total = total.plus(option.priceDelta());
+						extraUnits = Math.addExact(extraUnits, option.extraProductionUnits());
+						Integer lead = option.minLeadHours();
+						if (lead != null && (strictest == null || lead > strictest.hours())) {
+							strictest = new ValidatedCustomization.OptionLead(option.name(), lead);
+						}
 					}
 				}
 			}
@@ -120,7 +127,7 @@ public final class SelectionValidator {
 				throw fail(SELECTION_COUNT, describeCount(group));
 			}
 		}
-		return new ValidatedCustomization(choices, total);
+		return new ValidatedCustomization(choices, total, extraUnits, strictest);
 	}
 
 	/** NFC-normalized and stripped; blank means "no message". */

@@ -118,7 +118,8 @@ public class CustomizationAdminService {
 			throw nameTaken();
 		}
 		CustomizationOption option = saveOption(
-				new CustomizationOption(group, name, write.priceDelta(), write.activeOrDefault()));
+				new CustomizationOption(group, name, write.priceDelta(), write.activeOrDefault(),
+						write.extraProductionUnitsOrZero(), write.minLeadHours()));
 		audit.admin(actor, "CUSTOMIZATION_OPTION_CREATED", "customization_option", option.getId(), null,
 				optionDetails(option));
 		return AdminOptionResponse.from(option);
@@ -133,7 +134,8 @@ public class CustomizationAdminService {
 			throw nameTaken();
 		}
 		Map<String, Object> before = optionDetails(option);
-		option.replace(name, write.priceDelta(), write.activeOrDefault());
+		option.replace(name, write.priceDelta(), write.activeOrDefault(), write.extraProductionUnitsOrZero(),
+				write.minLeadHours());
 		saveOption(option);
 		Map<String, Object> after = optionDetails(option);
 		if (!before.equals(after)) {
@@ -186,6 +188,8 @@ public class CustomizationAdminService {
 		details.put("name", o.getName());
 		details.put("priceDelta", o.getPriceDelta().amount().toPlainString());
 		details.put("active", o.isActive());
+		details.put("extraProductionUnits", o.getExtraProductionUnits());
+		details.put("minLeadHours", o.getMinLeadHours());
 		return details;
 	}
 

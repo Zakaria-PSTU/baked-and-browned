@@ -6,5 +6,10 @@ import { Uuid } from '../models/uuid';
 export type AdminOption = Option & {
 'groupId': Uuid;
 'active': boolean;
+
+/**
+ * Kitchen capacity units this option adds per item, on top of the product's (v1.2).
+ */
+'extraProductionUnits': number;
 };
 

@@ -24,10 +24,12 @@ public final class CustomizationDtos {
 	}
 
 	/** Contract {@code AdminOption}. */
-	public record AdminOptionResponse(UUID id, UUID groupId, String name, Money priceDelta, boolean active) {
+	public record AdminOptionResponse(UUID id, UUID groupId, String name, Money priceDelta, boolean active,
+			int extraProductionUnits, @Nullable Integer minLeadHours) {
 
 		public static AdminOptionResponse from(CustomizationOption o) {
-			return new AdminOptionResponse(o.getId(), o.getGroup().getId(), o.getName(), o.getPriceDelta(), o.isActive());
+			return new AdminOptionResponse(o.getId(), o.getGroup().getId(), o.getName(), o.getPriceDelta(), o.isActive(),
+					o.getExtraProductionUnits(), o.getMinLeadHours());
 		}
 
 	}
@@ -51,10 +53,16 @@ public final class CustomizationDtos {
 
 	/** Contract {@code OptionWrite}. */
 	public record OptionWrite(@NotBlank @Size(max = 120) String name, @NotNull Money priceDelta,
-			@Nullable Boolean active) {
+			@Nullable Boolean active, @Nullable @Min(0) @Max(100) Integer extraProductionUnits,
+			@Nullable @Min(0) @Max(720) Integer minLeadHours) {
 
 		public boolean activeOrDefault() {
 			return active == null || active;
+		}
+
+		/** Absent means none: the write replaces every field. */
+		public int extraProductionUnitsOrZero() {
+			return extraProductionUnits == null ? 0 : extraProductionUnits;
 		}
 
 	}

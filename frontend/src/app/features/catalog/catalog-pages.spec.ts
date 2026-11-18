@@ -133,8 +133,8 @@ describe('catalog pages', () => {
               minSelections: 1,
               maxSelections: 1,
               options: [
-                { id: 'o1', name: '6 pieces', priceDelta: 0 },
-                { id: 'o2', name: '12 pieces', priceDelta: 600 },
+                { id: 'o1', name: '6 pieces', priceDelta: 0, minLeadHours: 12 },
+                { id: 'o2', name: '12 pieces', priceDelta: 600, minLeadHours: 72 },
               ],
             },
             {
@@ -160,6 +160,11 @@ describe('catalog pages', () => {
       expect(text).toContain('Included');
       expect(text).toContain('+ ৳600.00');
       expect(text).toContain('up to 50 characters');
+      // Only an option needing more notice than the product (24 h) says so.
+      const notices = [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="option-notice"]'),
+      ].map((n) => n.textContent?.trim());
+      expect(notices).toEqual(["· needs 72 hours' notice"]);
     });
 
     it('explains a missing product instead of showing an error', async () => {

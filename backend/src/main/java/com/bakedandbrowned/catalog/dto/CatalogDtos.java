@@ -70,11 +70,11 @@ public final class CatalogDtos {
 
 	// ------------------------------------------------------------------ products
 
-	/** Contract {@code Option}. */
-	public record OptionResponse(UUID id, String name, Money priceDelta) {
+	/** Contract {@code Option}; {@code minLeadHours} only when the option needs its own notice. */
+	public record OptionResponse(UUID id, String name, Money priceDelta, @Nullable Integer minLeadHours) {
 
 		static OptionResponse from(OptionView o) {
-			return new OptionResponse(o.id(), o.name(), o.priceDelta());
+			return new OptionResponse(o.id(), o.name(), o.priceDelta(), o.minLeadHours());
 		}
 
 	}

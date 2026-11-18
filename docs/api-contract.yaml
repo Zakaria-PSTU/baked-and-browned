@@ -759,6 +759,49 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-options/{optionId}/ingredients:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetOptionIngredients
+      summary: Ingredient consumption this option adds per item (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/OptionId'}
+      responses:
+        '200':
+          description: Ingredient lines per item the option is chosen on
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetOptionIngredients
+      summary: Replace the ingredients this option adds per item, on top of the product recipe (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/OptionId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/ProductIngredientLine'}
+      responses:
+        '200':
+          description: Updated option ingredients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/delivery-zones:
     get:
       tags: [Admin]
@@ -1415,14 +1458,25 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         name: {type: string}
         priceDelta: {$ref: '#/components/schemas/Money'}
+        minLeadHours:
+          type: integer
+          minimum: 0
+          maximum: 720
+          nullable: true
+          description: Notice this option needs, in hours; applies when stricter than the product's minLeadHours (v1.2).
     AdminOption:
       allOf:
         - {$ref: '#/components/schemas/Option'}
         - type: object
-          required: [groupId, active]
+          required: [groupId, active, extraProductionUnits]
           properties:
             groupId: {$ref: '#/components/schemas/Uuid'}
             active: {type: boolean}
+            extraProductionUnits:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Kitchen capacity units this option adds per item, on top of the product's (v1.2).
     OptionWrite:
       type: object
       required: [name, priceDelta]
@@ -1430,6 +1484,8 @@ components:
         name: {type: string, minLength: 1, maxLength: 120}
         priceDelta: {$ref: '#/components/schemas/Money'}
         active: {type: boolean, default: true}
+        extraProductionUnits: {type: integer, minimum: 0, maximum: 100, default: 0, description: 'Kitchen capacity units added per item (v1.2)'}
+        minLeadHours: {type: integer, minimum: 0, maximum: 720, nullable: true, description: 'Notice this option needs; absent or null means none (v1.2)'}
     CustomizationGroup:
       type: object
       required: [id, code, selectionType, required, minSelections, maxSelections, options]

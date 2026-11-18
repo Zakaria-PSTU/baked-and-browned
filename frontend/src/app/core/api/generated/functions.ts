@@ -81,6 +81,10 @@ export type { AdminCreateCustomizationOption$Params as AdminCreateCustomizationO
 export { adminCreateCustomizationOption as adminCreateCustomizationOption } from './fn/admin/admin-create-customization-option';
 export type { AdminUpdateCustomizationOption$Params as AdminUpdateCustomizationOption$Params } from './fn/admin/admin-update-customization-option';
 export { adminUpdateCustomizationOption as adminUpdateCustomizationOption } from './fn/admin/admin-update-customization-option';
+export type { AdminGetOptionIngredients$Params as AdminGetOptionIngredients$Params } from './fn/admin/admin-get-option-ingredients';
+export { adminGetOptionIngredients as adminGetOptionIngredients } from './fn/admin/admin-get-option-ingredients';
+export type { AdminSetOptionIngredients$Params as AdminSetOptionIngredients$Params } from './fn/admin/admin-set-option-ingredients';
+export { adminSetOptionIngredients as adminSetOptionIngredients } from './fn/admin/admin-set-option-ingredients';
 export type { AdminListDeliveryZones$Params as AdminListDeliveryZones$Params } from './fn/admin/admin-list-delivery-zones';
 export { adminListDeliveryZones as adminListDeliveryZones } from './fn/admin/admin-list-delivery-zones';
 export type { AdminCreateDeliveryZone$Params as AdminCreateDeliveryZone$Params } from './fn/admin/admin-create-delivery-zone';

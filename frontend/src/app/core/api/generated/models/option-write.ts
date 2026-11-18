@@ -4,6 +4,16 @@
 import { Money } from '../models/money';
 export interface OptionWrite {
   active?: boolean;
+
+  /**
+   * Kitchen capacity units added per item (v1.2)
+   */
+  extraProductionUnits?: number;
+
+  /**
+   * Notice this option needs; absent or null means none (v1.2)
+   */
+  minLeadHours?: number | null;
   name: string;
   priceDelta: Money;
 }

@@ -37,7 +37,18 @@ public record CustomizationRules(List<GroupRule> groups) {
 
 	}
 
-	public record OptionRule(UUID id, String name, Money priceDelta, boolean active) {
+	/**
+	 * @param extraProductionUnits kitchen capacity added per item
+	 * @param minLeadHours notice the option needs, if any; the stricter of this and the product's applies
+	 */
+	public record OptionRule(UUID id, String name, Money priceDelta, boolean active, int extraProductionUnits,
+			@Nullable Integer minLeadHours) {
+
+		/** An option with no kitchen cost beyond its product. */
+		public OptionRule(UUID id, String name, Money priceDelta, boolean active) {
+			this(id, name, priceDelta, active, 0, null);
+		}
+
 	}
 
 }

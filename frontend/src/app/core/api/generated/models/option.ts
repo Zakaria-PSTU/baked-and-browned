@@ -5,6 +5,11 @@ import { Money } from '../models/money';
 import { Uuid } from '../models/uuid';
 export interface Option {
   id: Uuid;
+
+  /**
+   * Notice this option needs, in hours; applies when stricter than the product's minLeadHours (v1.2).
+   */
+  minLeadHours?: number | null;
   name: string;
   priceDelta: Money;
 }

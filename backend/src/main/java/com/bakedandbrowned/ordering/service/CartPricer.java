@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import com.bakedandbrowned.common.value.Money;
 import com.bakedandbrowned.common.value.Quantity;
 import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.customization.service.ProductCustomizationService;
+import com.bakedandbrowned.customization.service.ValidatedCustomization;
 import com.bakedandbrowned.delivery.service.DeliveryZoneService;
 import com.bakedandbrowned.delivery.service.ZoneEligibility.EligibleZone;
 import com.bakedandbrowned.inventory.service.RecipeService;
@@ -30,7 +32,8 @@ import com.bakedandbrowned.scheduling.service.SlotService.SlotView;
 /**
  * Prices and validates a cart against current server data; shared by quote and checkout. Checks, in
  * order, each failing with 422: products purchasable, customizations valid, zone eligible for the
- * subtotal, slot open, every product's lead time met. Capacity and stock are reported here
+ * subtotal, slot open, every line's lead time met (its product's, or a chosen option's when that is
+ * stricter). Capacity and stock, including what chosen options add (ADR-0019), are reported here
  * ({@link PricedCart#capacityUnits()}, {@link PricedCart#ingredientNeeds()}) but decided by the
  * caller: the quote checks availability, checkout reserves.
  */
@@ -68,16 +71,23 @@ public class CartPricer {
 			.purchasable(request.items().stream().map(CartLine::productId).distinct().toList());
 
 		List<PricedLine> lines = new ArrayList<>();
+		List<LeadRequirement> leads = new ArrayList<>();
 		Map<UUID, Integer> quantities = new LinkedHashMap<>();
+		Map<UUID, Integer> optionQuantities = new LinkedHashMap<>();
 		for (CartLine item : request.items()) {
 			PurchasableProduct product = products.get(item.productId());
 			if (product == null) {
 				throw ApiException.unprocessable(PRODUCT_UNAVAILABLE, "A product in your cart is no longer available.");
 			}
-			lines.add(PricedLine.of(product.id(), product.name(), product.basePrice(), item.quantity(),
-					customizations.validateSelection(product.id(), item.selectedOptionIds(), item.customTexts()),
-					product.productionUnits(), product.cancellationCutoffHours()));
+			ValidatedCustomization customization = customizations.validateSelection(product.id(),
+					item.selectedOptionIds(), item.customTexts());
+			// ADR-0019: options add kitchen capacity and stock per item, and may need more notice.
+			lines.add(PricedLine.of(product.id(), product.name(), product.basePrice(), item.quantity(), customization,
+					Math.addExact(product.productionUnits(), customization.extraProductionUnits()),
+					product.cancellationCutoffHours()));
 			quantities.merge(product.id(), item.quantity(), Integer::sum);
+			customization.optionIds().forEach(option -> optionQuantities.merge(option, item.quantity(), Integer::sum));
+			leads.add(LeadRequirement.of(product, customization));
 		}
 
 		Money subtotal = PricedCart.subtotal(lines);
@@ -89,16 +99,28 @@ public class CartPricer {
 			.filter(s -> s.bookableAt(now))
 			.orElseThrow(() -> ApiException.unprocessable(SLOT_UNAVAILABLE,
 					"This delivery slot is no longer available. Please choose another."));
-		for (PurchasableProduct product : products.values()) {
-			if (!LeadTime.satisfied(now, slot.startAt(), product.minLeadHours())) {
-				throw ApiException.unprocessable(LEAD_TIME_NOT_MET, "\"" + product.name() + "\" needs at least "
-						+ product.minLeadHours() + " hours' notice. Please choose a later slot.");
+		for (LeadRequirement lead : leads) {
+			if (!LeadTime.satisfied(now, slot.startAt(), lead.hours())) {
+				throw ApiException.unprocessable(LEAD_TIME_NOT_MET, "\"" + lead.what() + "\" needs at least " + lead.hours()
+						+ " hours' notice. Please choose a later slot.");
 			}
 		}
 
-		SortedMap<UUID, Quantity> needs = recipes.requirements(quantities);
+		SortedMap<UUID, Quantity> needs = recipes.requirements(quantities, optionQuantities);
 		return new PricedCart(lines, subtotal, zone, discount, total, slot, PricedCart.capacityUnits(lines), needs,
 				PricedCart.cancellationDeadline(slot.startAt(), lines));
+	}
+
+	/** The notice one cart line needs: its product's, or a chosen option's when that is stricter. */
+	record LeadRequirement(String what, int hours) {
+
+		static LeadRequirement of(PurchasableProduct product, ValidatedCustomization customization) {
+			ValidatedCustomization.@Nullable OptionLead option = customization.strictestLead();
+			return option != null && option.hours() > product.minLeadHours()
+					? new LeadRequirement(option.optionName(), option.hours())
+					: new LeadRequirement(product.name(), product.minLeadHours());
+		}
+
 	}
 
 }

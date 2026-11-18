@@ -209,6 +209,28 @@ class SelectionValidatorTest {
 
 	}
 
+	@Test
+	void chosenOptionsAddTheirKitchenCostsAndTheStrictestNoticeWins() {
+		OptionRule small = new OptionRule(UUID.randomUUID(), "1 kg", Money.of("0.00"), true, 0, null);
+		OptionRule large = new OptionRule(UUID.randomUUID(), "3 kg", Money.of("2500.00"), true, 4, 48);
+		OptionRule painted = new OptionRule(UUID.randomUUID(), "Hand-painted design", Money.of("1500.00"), true, 1, 72);
+		OptionRule fruit = new OptionRule(UUID.randomUUID(), "Fresh fruit", Money.of("300.00"), true, 0, 36);
+		GroupRule size = group("CAKE_SIZE", "Cake size", SelectionType.SINGLE, true, 1, 1, null, small, large);
+		GroupRule finish = group("CAKE_FINISH", "Finish", SelectionType.MULTIPLE, false, 0, 2, null, painted, fruit);
+		CustomizationRules cake = new CustomizationRules(List.of(size, finish));
+
+		ValidatedCustomization plain = SelectionValidator.validate(cake, List.of(small.id()), Map.of());
+		assertThat(plain.extraProductionUnits()).isZero();
+		assertThat(plain.strictestLead()).isNull();
+
+		ValidatedCustomization fancy = SelectionValidator.validate(cake, List.of(fruit.id(), large.id(), painted.id()),
+				Map.of());
+		assertThat(fancy.extraProductionUnits()).isEqualTo(5);
+		assertThat(fancy.strictestLead()).isEqualTo(new ValidatedCustomization.OptionLead("Hand-painted design", 72));
+		assertThat(fancy.optionIds()).containsExactlyInAnyOrder(fruit.id(), large.id(), painted.id());
+		assertThat(fancy.optionsTotal()).isEqualTo(Money.of("4300.00"));
+	}
+
 	// ------------------------------------------------------------------ helpers
 
 	private static ValidatedCustomization validate(List<UUID> options, Map<UUID, String> texts) {

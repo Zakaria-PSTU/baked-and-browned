@@ -13,11 +13,27 @@ import com.bakedandbrowned.common.value.Money;
  * catalog changes never alter a placed order.
  *
  * @param optionsTotal sum of the chosen options' price deltas (text messages are free)
+ * @param extraProductionUnits kitchen capacity the chosen options add per item
+ * @param strictestLead the chosen option needing the most notice, if any option needs any
  */
-public record ValidatedCustomization(List<Choice> choices, Money optionsTotal) {
+public record ValidatedCustomization(List<Choice> choices, Money optionsTotal, int extraProductionUnits,
+		@Nullable OptionLead strictestLead) {
 
 	public ValidatedCustomization {
 		choices = List.copyOf(choices);
+		if (extraProductionUnits < 0) {
+			throw new IllegalArgumentException("extraProductionUnits must not be negative");
+		}
+	}
+
+	/** Choices with no kitchen cost beyond the product. */
+	public ValidatedCustomization(List<Choice> choices, Money optionsTotal) {
+		this(choices, optionsTotal, 0, null);
+	}
+
+	/** The chosen options, by id (what their ingredients are looked up by). */
+	public List<UUID> optionIds() {
+		return choices.stream().map(Choice::optionId).filter(java.util.Objects::nonNull).toList();
 	}
 
 	/** Either an option ({@code optionId}, {@code optionName}) or a message ({@code textValue}). */
@@ -32,6 +48,10 @@ public record ValidatedCustomization(List<Choice> choices, Money optionsTotal) {
 			return new Choice(group.id(), group.name(), null, null, text, Money.ZERO);
 		}
 
+	}
+
+	/** An option's notice requirement, named for the customer-facing error. */
+	public record OptionLead(String optionName, int hours) {
 	}
 
 }

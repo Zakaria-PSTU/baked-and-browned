@@ -32,7 +32,7 @@ public class ProductCustomizationReader {
 		this.jdbc = jdbc;
 	}
 
-	public record OptionView(UUID id, String name, Money priceDelta) {
+	public record OptionView(UUID id, String name, Money priceDelta, @Nullable Integer minLeadHours) {
 	}
 
 	/**
@@ -54,7 +54,7 @@ public class ProductCustomizationReader {
 			var ps = con.prepareStatement("""
 					SELECT pcg.product_id, g.id AS group_id, g.code, g.name AS group_name, g.selection_type,
 					       g.min_selections, g.max_selections, pcg.required, pcg.text_max_length,
-					       o.id AS option_id, o.name AS option_name, o.price_delta
+					       o.id AS option_id, o.name AS option_name, o.price_delta, o.min_lead_hours
 					FROM product_customization_groups pcg
 					JOIN customization_groups g ON g.id = pcg.group_id
 					LEFT JOIN product_customization_options pco
@@ -77,7 +77,8 @@ public class ProductCustomizationReader {
 			UUID optionId = rs.getObject("option_id", UUID.class);
 			if (optionId != null) {
 				BigDecimal delta = rs.getBigDecimal("price_delta");
-				group.options.add(new OptionView(optionId, rs.getString("option_name"), Money.of(delta)));
+				group.options.add(new OptionView(optionId, rs.getString("option_name"), Money.of(delta),
+						rs.getObject("min_lead_hours", Integer.class)));
 			}
 		});
 		Map<UUID, List<GroupView>> result = new LinkedHashMap<>();
