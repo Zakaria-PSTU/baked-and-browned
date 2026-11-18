@@ -19,11 +19,16 @@ spring:
           time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Manual-payment proof files are at most 5 MB (ADR-0011); larger requests are refused with 413.
+      max-file-size: 5MB
+      max-request-size: 6MB
   task:
     scheduling:
       pool:
-        # Outbox dispatch and housekeeping must not wait behind each other.
-        size: 2
+        # Outbox dispatch, hold expiry and housekeeping must not wait behind each other.
+        size: 3
 
 server:
   # Honor X-Forwarded-For/-Proto only from trusted internal proxies (Tomcat RemoteIpValve), so
@@ -68,6 +73,10 @@ app:
       manual-review-window: 6h
       manual-review-slot-margin: 2h
   payments:
+    proof-storage:
+      # Private volume outside any web root, backed up with the database. Set
+      # APP_PAYMENTS_PROOF_STORAGE_DIRECTORY in deployments.
+      directory: data/payment-proofs
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
       checkout-base-url: http://localhost:4200/dev/fake-gateway
@@ -87,6 +96,9 @@ app:
       checkout:
         limit: 20
         window: 10m
+      manual-payment:
+        limit: 5
+        window: 15m
 
 logging:
   pattern:
