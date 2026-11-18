@@ -2,10 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import type { OrderStatus } from '../../core/api/generated/models';
+import type { OrderDetail, OrderStatus } from '../../core/api/generated/models';
 import { BdtPipe } from '../../shared/bdt.pipe';
 import { formatDhakaRange } from '../../shared/dhaka-time';
 import { CheckoutApi } from '../checkout/checkout-api';
+import { ManualPaymentPanel } from './manual-payment-panel';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   PENDING_PAYMENT: 'Waiting for payment',
@@ -24,7 +25,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
  */
 @Component({
   selector: 'bb-order-page',
-  imports: [RouterLink, BdtPipe],
+  imports: [RouterLink, BdtPipe, ManualPaymentPanel],
   templateUrl: './order-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -50,7 +51,13 @@ export class OrderPage {
 
   protected readonly formatRange = formatDhakaRange;
 
-  protected statusLabel(status: OrderStatus): string {
-    return STATUS_LABELS[status] ?? status;
+  protected statusLabel(order: OrderDetail): string {
+    if (
+      order.status === 'PENDING_PAYMENT' &&
+      order.payment.manualSubmissionStatus === 'SUBMITTED'
+    ) {
+      return 'Checking your payment';
+    }
+    return STATUS_LABELS[order.status] ?? order.status;
   }
 }

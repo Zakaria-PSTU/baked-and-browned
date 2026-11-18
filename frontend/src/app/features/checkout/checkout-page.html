@@ -139,10 +139,34 @@
       <fieldset>
         <legend class="font-medium">Payment</legend>
         <label class="mt-2 flex items-center gap-2 text-sm">
-          <input type="radio" name="payment" checked disabled />
+          <input
+            type="radio"
+            name="payment"
+            value="COD"
+            [checked]="paymentMethod() === 'COD'"
+            (change)="choosePayment('COD')"
+          />
           Cash on delivery
         </label>
-        <p class="mt-1 text-xs text-stone-500">Mobile wallet and card payments are coming soon.</p>
+        @if (manualOffered()) {
+          <label class="mt-1 flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="payment"
+              value="MANUAL"
+              [checked]="paymentMethod() === 'MANUAL'"
+              (change)="choosePayment('MANUAL')"
+            />
+            Bank or mobile wallet transfer
+          </label>
+          @if (paymentMethod() === 'MANUAL') {
+            <p class="mt-1 text-xs text-stone-600" data-testid="manual-hint">
+              After placing the order you have 15 minutes to send the money and give us the
+              transaction ID. We confirm the order once we have checked our statement.
+            </p>
+          }
+        }
+        <p class="mt-1 text-xs text-stone-500">Card payment is coming soon.</p>
       </fieldset>
 
       @if (error(); as message) {
@@ -202,7 +226,11 @@
           (click)="place()"
         >
           {{
-            busy() ? 'Placing your order…' : 'Place order · pay ' + (q.total | bdt) + ' on delivery'
+            busy()
+              ? 'Placing your order…'
+              : paymentMethod() === 'COD'
+                ? 'Place order · pay ' + (q.total | bdt) + ' on delivery'
+                : 'Place order · then transfer ' + (q.total | bdt)
           }}
         </button>
       } @else {

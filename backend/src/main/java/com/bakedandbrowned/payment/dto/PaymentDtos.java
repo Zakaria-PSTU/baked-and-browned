@@ -42,6 +42,11 @@ public final class PaymentDtos {
 		BANK_TRANSFER, BKASH, NAGAD, ROCKET, OTHER
 	}
 
+	/** Contract {@code ManualPaymentAccount}: where the customer sends a MANUAL payment (ADR-0022). */
+	public record ManualPaymentAccount(ManualPaymentProvider provider, String label, String accountName,
+			String accountNumber, @Nullable String note) {
+	}
+
 	/** Contract {@code ManualPaymentSubmission}: no storage key, file hash or submitter. */
 	public record ManualPaymentSubmission(UUID id, UUID paymentId, String provider, String transactionReference,
 			String status, boolean hasProof, Instant createdAt) {

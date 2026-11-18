@@ -6,14 +6,19 @@ import {
   getOrder,
   listDeliverySlots,
   listDeliveryZones,
+  listManualPaymentAccounts,
   placeOrder,
   quoteCheckout,
+  submitManualPayment,
 } from '../../core/api/generated/functions';
 import type {
   CheckoutQuote,
   CheckoutQuoteRequest,
   DeliverySlot,
   DeliveryZone,
+  ManualPaymentAccount,
+  ManualPaymentProvider,
+  ManualPaymentSubmission,
   OrderDetail,
   PlaceOrderRequest,
 } from '../../core/api/generated/models';
@@ -43,5 +48,23 @@ export class CheckoutApi {
 
   order(orderId: string): Observable<OrderDetail> {
     return getOrder(this.http, this.rootUrl, { orderId }).pipe(map((r) => r.body));
+  }
+
+  /** Where to send a MANUAL payment; empty when it is not offered (ADR-0022). */
+  manualAccounts(): Observable<ManualPaymentAccount[]> {
+    return listManualPaymentAccounts(this.http, this.rootUrl).pipe(map((r) => r.body));
+  }
+
+  /** Records the customer's transfer reference; it never confirms the payment (ADR-0011). */
+  submitManual(
+    orderId: string,
+    provider: ManualPaymentProvider,
+    transactionReference: string,
+    proof?: File,
+  ): Observable<ManualPaymentSubmission> {
+    return submitManualPayment(this.http, this.rootUrl, {
+      orderId,
+      body: { provider, transactionReference, proof },
+    }).pipe(map((r) => r.body));
   }
 }

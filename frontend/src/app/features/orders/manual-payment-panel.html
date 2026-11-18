@@ -1,0 +1,92 @@
+<section
+  class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"
+  aria-labelledby="pay-heading"
+  data-testid="manual-payment"
+>
+  <h2 id="pay-heading" class="font-medium">Pay {{ order().total | bdt }} by transfer</h2>
+  @if (remaining(); as left) {
+    <p class="mt-1 text-amber-900" data-testid="time-left">
+      Time left to pay: <span class="font-semibold tabular-nums">{{ left }}</span>
+    </p>
+  } @else {
+    <p class="mt-1 text-red-800" data-testid="time-up">
+      The time to pay has run out. If you already paid, enter the transaction ID below; otherwise
+      please order again.
+    </p>
+  }
+
+  @if (accounts.error()) {
+    <p class="mt-3 text-red-800">We could not load our account details. Please reload the page.</p>
+  } @else {
+    <ul class="mt-3 space-y-2">
+      @for (a of accounts.value() ?? []; track $index) {
+        <li class="rounded-md bg-white p-3" data-testid="account">
+          <span class="block font-medium">{{ a.label }}</span>
+          <span class="block">{{ a.accountName }}</span>
+          <span class="block font-mono text-base tracking-wide">{{ a.accountNumber }}</span>
+          @if (a.note) {
+            <span class="mt-1 block text-stone-600">{{ a.note }}</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+  <p class="mt-3 text-stone-700">
+    Send exactly {{ order().total | bdt }} and write <strong>{{ order().orderNumber }}</strong> as
+    the reference, then tell us the transaction ID.
+  </p>
+
+  <form class="mt-4 space-y-3" (submit)="submit($event)" novalidate>
+    @if (providers().length > 1) {
+      <div>
+        <label for="provider" class="block font-medium">Paid with</label>
+        <select
+          id="provider"
+          class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+          [value]="provider()"
+          (change)="chooseProvider($event)"
+        >
+          <option value="" disabled>Choose</option>
+          @for (p of providers(); track p) {
+            <option [value]="p">{{ providerName(p) }}</option>
+          }
+        </select>
+      </div>
+    }
+    <div>
+      <label for="reference" class="block font-medium">Transaction ID</label>
+      <input
+        id="reference"
+        type="text"
+        maxlength="100"
+        autocomplete="off"
+        class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+        [value]="reference()"
+        (input)="typeReference($event)"
+      />
+    </div>
+    <div>
+      <label for="proof" class="block font-medium"
+        >Screenshot or receipt <span class="font-normal text-stone-500">(optional)</span></label
+      >
+      <input
+        id="proof"
+        type="file"
+        accept="image/jpeg,image/png,application/pdf"
+        class="mt-1 block w-full text-sm"
+        (change)="chooseFile($event)"
+      />
+      <p class="mt-1 text-xs text-stone-500">JPEG, PNG or PDF, up to 5 MB.</p>
+    </div>
+    @if (error(); as message) {
+      <p class="rounded-md bg-red-50 px-3 py-2 text-red-800" role="alert">{{ message }}</p>
+    }
+    <button
+      type="submit"
+      class="rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+      [disabled]="busy()"
+    >
+      {{ busy() ? 'Sending…' : 'I have paid' }}
+    </button>
+  </form>
+</section>

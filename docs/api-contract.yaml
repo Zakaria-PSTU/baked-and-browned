@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.2.0
+  version: 1.3.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -15,6 +15,10 @@ info:
     v1.2 (ADR-0017), also additive: partial refunds (optional `amount` on
     adminRequestRefund, `refundedAmount` on AdminPayment) and second-approver
     review (the ADMIN who requested a refund never approves it).
+
+    v1.3, additive: the receiving accounts for manual payment
+    (listManualPaymentAccounts, ADR-0022), and the documented meaning of list
+    order in product customization assignments (ADR-0021).
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -324,6 +328,22 @@ paths:
           headers:
             Location:
               schema: {type: string, format: uri}
+  /payments/manual-accounts:
+    get:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: listManualPaymentAccounts
+      summary: Where to send a MANUAL payment (v1.3, ADR-0022)
+      description: Configured per deployment. Empty when manual payment is not offered.
+      responses:
+        '200':
+          description: Receiving accounts, in the configured order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ManualPaymentAccount'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /payments/{orderId}/manual-submission:
     post:
       tags: [Payments]
@@ -2004,6 +2024,16 @@ components:
           nullable: true
         reason: {type: string, nullable: true}
         at: {type: string, format: date-time}
+    ManualPaymentAccount:
+      type: object
+      required: [provider, label, accountName, accountNumber]
+      description: A business receiving account for MANUAL payments (v1.3, ADR-0022).
+      properties:
+        provider: {$ref: '#/components/schemas/ManualPaymentProvider'}
+        label: {type: string, maxLength: 80}
+        accountName: {type: string, maxLength: 120}
+        accountNumber: {type: string, maxLength: 60}
+        note: {type: string, maxLength: 300, nullable: true}
     ManualPaymentSubmission:
       type: object
       required: [id, paymentId, provider, transactionReference, status, hasProof, createdAt]

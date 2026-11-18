@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   inject,
@@ -29,7 +30,7 @@ export const BOOKING_DAYS = 14;
 
 /**
  * Checkout: delivery details, a slot, then a server quote the customer confirms before placing
- * the order. Cash on delivery only for now. Every amount shown comes from the server; any change
+ * the order, paid cash on delivery or by transfer. Every amount shown comes from the server; any change
  * after a quote drops it, so the total placed is always the total reviewed.
  */
 @Component({
@@ -52,6 +53,11 @@ export class CheckoutPage {
     stream: ({ params }) => this.api.slots(params),
   });
   protected readonly slotId = signal<string | null>(null);
+
+  /** Receiving accounts; transfer is offered only when at least one is configured (ADR-0022). */
+  protected readonly manualAccounts = rxResource({ stream: () => this.api.manualAccounts() });
+  protected readonly manualOffered = computed(() => (this.manualAccounts.value() ?? []).length > 0);
+  protected readonly paymentMethod = signal<'COD' | 'MANUAL'>('COD');
 
   protected readonly form = new FormGroup({
     name: new FormControl('', {
@@ -96,6 +102,11 @@ export class CheckoutPage {
     return `${zone.name} · delivery ${formatBdt(zone.deliveryFee)}${minimum}`;
   }
 
+  protected choosePayment(method: 'COD' | 'MANUAL'): void {
+    this.paymentMethod.set(method);
+    this.error.set(null);
+  }
+
   protected chooseDate(event: Event): void {
     this.date.set((event.target as HTMLSelectElement).value);
     this.slotId.set(null);
@@ -134,7 +145,7 @@ export class CheckoutPage {
     if (!request || !this.quote() || this.busy()) {
       return;
     }
-    const body = { ...request, paymentMethod: 'COD' as const };
+    const body = { ...request, paymentMethod: this.paymentMethod() };
     this.busy.set(true);
     this.error.set(null);
     this.api

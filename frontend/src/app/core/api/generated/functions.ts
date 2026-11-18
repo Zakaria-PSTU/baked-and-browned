@@ -37,6 +37,8 @@ export type { PaymentReturn$Params as PaymentReturn$Params } from './fn/payments
 export { paymentReturn as paymentReturn } from './fn/payments/payment-return';
 export type { PaymentReturnPost$Params as PaymentReturnPost$Params } from './fn/payments/payment-return-post';
 export { paymentReturnPost as paymentReturnPost } from './fn/payments/payment-return-post';
+export type { ListManualPaymentAccounts$Params as ListManualPaymentAccounts$Params } from './fn/payments/list-manual-payment-accounts';
+export { listManualPaymentAccounts as listManualPaymentAccounts } from './fn/payments/list-manual-payment-accounts';
 export type { SubmitManualPayment$Params as SubmitManualPayment$Params } from './fn/payments/submit-manual-payment';
 export { submitManualPayment as submitManualPayment } from './fn/payments/submit-manual-payment';
 export type { PaymentWebhook$Json$Params as PaymentWebhook$Json$Params } from './fn/payments/payment-webhook-json';

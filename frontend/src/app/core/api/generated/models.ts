@@ -35,6 +35,7 @@ export type { IngredientCreate } from './models/ingredient-create';
 export type { InventoryMovement } from './models/inventory-movement';
 export type { InventoryMovementPage } from './models/inventory-movement-page';
 export type { LoginRequest } from './models/login-request';
+export type { ManualPaymentAccount } from './models/manual-payment-account';
 export type { ManualPaymentProvider } from './models/manual-payment-provider';
 export type { ManualPaymentSubmission } from './models/manual-payment-submission';
 export type { ManualSubmissionStatus } from './models/manual-submission-status';
