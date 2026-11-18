@@ -40,6 +40,14 @@ public class ProductCatalog {
 		}
 	}
 
+	/** @throws ApiException 404 {@code PRODUCT_NOT_FOUND} */
+	@Transactional(readOnly = true)
+	public void requireExists(UUID productId) {
+		if (!products.existsById(productId)) {
+			throw ApiException.notFound(ProductAdminService.PRODUCT_NOT_FOUND, "Product not found.");
+		}
+	}
+
 	/** The product in the contract's {@code Product} shape, whatever its status. */
 	@Transactional(readOnly = true)
 	public ProductResponse view(UUID productId) {
