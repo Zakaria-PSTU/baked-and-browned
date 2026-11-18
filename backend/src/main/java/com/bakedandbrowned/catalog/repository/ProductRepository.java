@@ -5,11 +5,14 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.bakedandbrowned.catalog.entity.Product;
 import com.bakedandbrowned.catalog.entity.ProductStatus;
+
+import jakarta.persistence.LockModeType;
 
 public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpecificationExecutor<Product> {
 
@@ -29,6 +32,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
 	@Query("select p from Product p join fetch p.category where p.id = :id")
 	Optional<Product> findWithCategory(@Param("id") UUID id);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Product p where p.id = :id")
+	Optional<Product> lockById(@Param("id") UUID id);
 
 	boolean existsBySlug(String slug);
 
