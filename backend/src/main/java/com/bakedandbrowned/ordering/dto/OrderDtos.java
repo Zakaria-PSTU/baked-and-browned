@@ -36,6 +36,10 @@ public final class OrderDtos {
 
 	}
 
+	/** Contract {@code CancelOrderRequest}; the body itself is optional. */
+	public record CancelOrderRequest(@Nullable @Size(max = 500) String reason) {
+	}
+
 	/** Contract {@code Order}. */
 	public record OrderSummary(UUID orderId, String orderNumber, String status, String paymentStatus, Money subtotal,
 			Money deliveryFee, Money discount, Money total, String currency, String paymentMethod, Instant createdAt) {

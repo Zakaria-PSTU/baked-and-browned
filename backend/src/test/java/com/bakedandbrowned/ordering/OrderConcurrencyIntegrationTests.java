@@ -5,12 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -106,27 +100,6 @@ class OrderConcurrencyIntegrationTests extends CheckoutIntegrationTest {
 			ids.add(userIdOf(bearer("CUSTOMER")));
 		}
 		return ids;
-	}
-
-	private static List<Outcome> race(int threads, java.util.function.IntFunction<Callable<Outcome>> task)
-			throws Exception {
-		CountDownLatch start = new CountDownLatch(1);
-		List<Future<Outcome>> futures = new ArrayList<>();
-		try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-			for (int i = 0; i < threads; i++) {
-				Callable<Outcome> work = task.apply(i);
-				futures.add(pool.submit(() -> {
-					start.await();
-					return work.call();
-				}));
-			}
-			start.countDown();
-			List<Outcome> outcomes = new ArrayList<>();
-			for (Future<Outcome> future : futures) {
-				outcomes.add(future.get(60, TimeUnit.SECONDS));
-			}
-			return outcomes;
-		}
 	}
 
 }

@@ -1,18 +1,27 @@
 package com.bakedandbrowned.ordering;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import com.bakedandbrowned.inventory.InventoryIntegrationTest;
 import com.bakedandbrowned.ordering.dto.OrderDtos.PlaceOrderRequest;
@@ -72,6 +81,73 @@ abstract class CheckoutIntegrationTest extends InventoryIntegrationTest {
 		return mockMvc.perform(post("/api/v1/orders").header(HttpHeaders.AUTHORIZATION, bearer)
 			.contentType(MediaType.APPLICATION_JSON)
 			.content(body));
+	}
+
+	/** Places an order through the API and returns its id. */
+	protected UUID placeOrder(String bearer, String method, UUID slotId, String... lines) throws Exception {
+		String response = place(bearer, order(UUID.randomUUID(), method, slotId, lines)).andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		return UUID.fromString(json.readTree(response).get("orderId").asString());
+	}
+
+	protected ResultActions cancel(String bearer, UUID orderId, @Nullable String body) throws Exception {
+		MockHttpServletRequestBuilder request = post("/api/v1/orders/{id}/cancel", orderId)
+			.header(HttpHeaders.AUTHORIZATION, bearer);
+		if (body != null) {
+			request.contentType(MediaType.APPLICATION_JSON).content(body);
+		}
+		return mockMvc.perform(request);
+	}
+
+	protected String orderStatus(UUID orderId) {
+		return jdbc.queryForObject("SELECT status::text FROM orders WHERE id = ?", String.class, orderId);
+	}
+
+	protected String paymentStatus(UUID orderId) {
+		return jdbc.queryForObject("SELECT status::text FROM payments WHERE order_id = ? AND superseded_at IS NULL",
+				String.class, orderId);
+	}
+
+	protected String slotReservationStatus(UUID orderId) {
+		return jdbc.queryForObject("SELECT status::text FROM slot_reservations WHERE order_id = ?", String.class,
+				orderId);
+	}
+
+	protected java.util.List<String> stockReservationStatuses(UUID orderId) {
+		return jdbc.queryForList("SELECT status::text FROM inventory_reservations WHERE order_id = ?", String.class,
+				orderId);
+	}
+
+	protected java.util.List<String> events(UUID orderId) {
+		return jdbc.queryForList("SELECT event_type FROM outbox_events WHERE aggregate_id = ? ORDER BY created_at",
+				String.class, orderId);
+	}
+
+	/**
+	 * Runs {@code threads} tasks released together by a latch, each in its own thread (and so its
+	 * own transaction), and returns their results in task order.
+	 */
+	protected static <T> java.util.List<T> race(int threads, java.util.function.IntFunction<Callable<T>> task)
+			throws Exception {
+		CountDownLatch start = new CountDownLatch(1);
+		java.util.List<Future<T>> futures = new java.util.ArrayList<>();
+		try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+			for (int i = 0; i < threads; i++) {
+				Callable<T> work = task.apply(i);
+				futures.add(pool.submit(() -> {
+					start.await();
+					return work.call();
+				}));
+			}
+			start.countDown();
+			java.util.List<T> results = new java.util.ArrayList<>();
+			for (Future<T> future : futures) {
+				results.add(future.get(60, TimeUnit.SECONDS));
+			}
+			return results;
+		}
 	}
 
 	protected PlaceOrderRequest parse(String body) {

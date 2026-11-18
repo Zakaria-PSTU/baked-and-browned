@@ -3,6 +3,7 @@ package com.bakedandbrowned.ordering.controller;
 import java.util.List;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,9 +16,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bakedandbrowned.common.ratelimit.RateLimiter;
+import com.bakedandbrowned.ordering.dto.OrderDtos.CancelOrderRequest;
 import com.bakedandbrowned.ordering.dto.OrderDtos.OrderDetail;
 import com.bakedandbrowned.ordering.dto.OrderDtos.OrderSummary;
 import com.bakedandbrowned.ordering.dto.OrderDtos.PlaceOrderRequest;
+import com.bakedandbrowned.ordering.service.OrderCancellationService;
 import com.bakedandbrowned.ordering.service.OrderPlacementService;
 import com.bakedandbrowned.ordering.service.OrderQueryService;
 
@@ -32,11 +35,15 @@ public class OrderController {
 
 	private final OrderQueryService queries;
 
+	private final OrderCancellationService cancellation;
+
 	private final RateLimiter rateLimiter;
 
-	OrderController(OrderPlacementService placement, OrderQueryService queries, RateLimiter rateLimiter) {
+	OrderController(OrderPlacementService placement, OrderQueryService queries, OrderCancellationService cancellation,
+			RateLimiter rateLimiter) {
 		this.placement = placement;
 		this.queries = queries;
+		this.cancellation = cancellation;
 		this.rateLimiter = rateLimiter;
 	}
 
@@ -55,6 +62,13 @@ public class OrderController {
 	@GetMapping("/{orderId}")
 	OrderDetail detail(@AuthenticationPrincipal Jwt jwt, @PathVariable("orderId") UUID orderId) {
 		return queries.detail(orderId, userId(jwt), isAdmin(jwt));
+	}
+
+	/** Customer cancellation before the order's deadline; the body (a reason) is optional. */
+	@PostMapping("/{orderId}/cancel")
+	OrderDetail cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable("orderId") UUID orderId,
+			@Valid @RequestBody(required = false) @Nullable CancelOrderRequest body) {
+		return cancellation.cancelByCustomer(orderId, userId(jwt), body == null ? null : body.reason());
 	}
 
 	private static UUID userId(Jwt jwt) {
