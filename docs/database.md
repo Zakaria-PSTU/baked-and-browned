@@ -598,6 +598,18 @@ CREATE TRIGGER trg_refunds_within_payment
   FOR EACH ROW EXECUTE FUNCTION check_refund_total();
 ```
 
+## V8 — online payments (`V8__online_payments.sql`)
+ADR-0012, Phase 3A: initiation reuses an open hosted session; gateway successes record when they were captured.
+```sql
+-- Online payments: the hosted checkout of the current session, so an open session is reused,
+-- and when a gateway-verified payment succeeded (manual and COD use verified_at).
+ALTER TABLE payments
+  ADD COLUMN provider_checkout_url VARCHAR(2048),
+  ADD COLUMN captured_at TIMESTAMPTZ,
+  ADD CONSTRAINT ck_payment_session_checkout
+    CHECK (provider_checkout_url IS NULL OR provider_session_id IS NOT NULL);
+```
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.

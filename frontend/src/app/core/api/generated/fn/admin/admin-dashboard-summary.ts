@@ -35,7 +35,7 @@ export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?
 'preparingOrders': number;
 
 /**
- * Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+ * Payments recorded as received today (manual approvals, COD cash collected, online payments captured), gross of refunds.
  */
 'collectedToday'?: Money;
 
@@ -82,7 +82,7 @@ export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?
       'preparingOrders': number;
       
       /**
-       * Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+       * Payments recorded as received today (manual approvals, COD cash collected, online payments captured), gross of refunds.
        */
       'collectedToday'?: Money;
       

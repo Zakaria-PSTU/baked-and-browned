@@ -17,6 +17,10 @@ public final class PaymentDtos {
 	private PaymentDtos() {
 	}
 
+	/** Contract {@code initiatePayment} 200 body: where to send the customer's browser. */
+	public record PaymentInitiation(UUID paymentId, java.net.URI checkoutUrl) {
+	}
+
 	/** Contract {@code ManualPaymentProvider}. */
 	public enum ManualPaymentProvider {
 		BANK_TRANSFER, BKASH, NAGAD, ROCKET, OTHER

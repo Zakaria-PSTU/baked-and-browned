@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -69,11 +70,21 @@ public class OrderPaymentOutcomes {
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void confirmPaid(UUID orderId, UUID adminId) {
+		confirm(orderId, "ADMIN", adminId);
+	}
+
+	/** As {@link #confirmPaid}, for a payment the gateway verified server to server (actor GATEWAY). */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void confirmPaidByGateway(UUID orderId) {
+		confirm(orderId, "GATEWAY", null);
+	}
+
+	private void confirm(UUID orderId, String actorType, @Nullable UUID actorUserId) {
 		requireStatus(orderId, "PENDING_PAYMENT");
 		jdbc.update("UPDATE orders SET status = 'CONFIRMED' WHERE id = ?", orderId);
 		jdbc.update("""
 				INSERT INTO order_status_history (order_id, from_status, to_status, actor_type, actor_user_id)
-				VALUES (?, 'PENDING_PAYMENT', 'CONFIRMED', 'ADMIN', ?)""", orderId, adminId);
+				VALUES (?, 'PENDING_PAYMENT', 'CONFIRMED', ?::actor_type, ?)""", orderId, actorType, actorUserId);
 		jdbc.update("UPDATE slot_reservations SET status = 'CONFIRMED' WHERE order_id = ? AND status = 'HELD'",
 				orderId);
 		stock.confirm(orderId);

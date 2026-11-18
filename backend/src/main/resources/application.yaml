@@ -77,6 +77,12 @@ app:
       # Private volume outside any web root, backed up with the database. Set
       # APP_PAYMENTS_PROOF_STORAGE_DIRECTORY in deployments.
       directory: data/payment-proofs
+    online:
+      # Gateway for new ONLINE sessions (PaymentGateways). Blank: the only adapter present, if any.
+      provider:
+      # Where the customer's browser lands after the hosted page; never proof of payment. Set
+      # APP_PAYMENTS_ONLINE_RETURN_URL to the production web origin.
+      return-url: http://localhost:4200/orders/{orderId}/payment
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
       checkout-base-url: http://localhost:4200/dev/fake-gateway
@@ -98,6 +104,9 @@ app:
         window: 10m
       manual-payment:
         limit: 5
+        window: 15m
+      payment-initiation:
+        limit: 20
         window: 15m
 
 logging:

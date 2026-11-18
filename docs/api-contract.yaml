@@ -276,7 +276,7 @@ paths:
       tags: [Payments]
       security: [{bearerAuth: []}]
       operationId: initiatePayment
-      description: ONLINE orders only. Reuses an open session for the current payment when one exists.
+      description: ONLINE orders only. Reuses an open session for the current payment when one exists. After a failed or cancelled attempt, a retry within the hold starts a new payment record. The checkout URL is only where to send the browser; payment is confirmed solely by the provider callback, verified server to server.
       parameters:
         - {$ref: '#/components/parameters/OrderId'}
       responses:
@@ -293,6 +293,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /payments/{orderId}/manual-submission:
     post:
       tags: [Payments]
@@ -1159,7 +1161,7 @@ paths:
                   collectedToday:
                     allOf:
                       - {$ref: '#/components/schemas/Money'}
-                    description: Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+                    description: Payments recorded as received today (manual approvals, COD cash collected, online payments captured), gross of refunds.
                   awaitingPaymentVerification:
                     type: integer
                     description: MANUAL payments whose latest submission awaits ADMIN verification.
@@ -1285,6 +1287,11 @@ components:
           schema: {$ref: '#/components/schemas/Problem'}
     Unprocessable:
       description: Invalid business input
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    ServiceUnavailable:
+      description: A required external service, such as the payment provider, could not be reached; retry later
       content:
         application/problem+json:
           schema: {$ref: '#/components/schemas/Problem'}

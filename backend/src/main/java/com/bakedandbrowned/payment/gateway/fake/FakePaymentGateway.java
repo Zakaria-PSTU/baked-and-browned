@@ -125,6 +125,13 @@ public class FakePaymentGateway implements PaymentGateway {
 				outcome, outcome == GatewayPaymentStatus.SUCCEEDED ? "fake_txn_" + id.substring("fake_sess_".length()) : null));
 	}
 
+	/** As {@link #settle}, but the provider records {@code chargedAmount} (a tampered or misrouted payment). */
+	public void settle(String sessionId, GatewayPaymentStatus outcome, Money chargedAmount) {
+		settle(sessionId, outcome);
+		sessions.computeIfPresent(sessionId, (id, session) -> new Session(session.orderReference(), chargedAmount,
+				session.status(), session.transactionId()));
+	}
+
 	/** The signed callback the provider would send, claiming {@code claimedStatus}. */
 	public ProviderCallback callbackFor(String sessionId, GatewayPaymentStatus claimedStatus) {
 		String body = json.writeValueAsString(Map.of("sessionId", sessionId, "status", claimedStatus.name()));

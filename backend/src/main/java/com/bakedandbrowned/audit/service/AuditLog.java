@@ -43,4 +43,13 @@ public class AuditLog {
 				json.writeValueAsString(details), MDC.get(TraceIdFilter.MDC_KEY));
 	}
 
+	/** A decision taken on a payment gateway's server-to-server verified result (actor GATEWAY). */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void gateway(String action, String entityType, @Nullable UUID entityId, Map<String, ?> details) {
+		jdbc.update("""
+				INSERT INTO audit_events (actor_type, action, entity_type, entity_id, details, trace_id)
+				VALUES ('GATEWAY', ?, ?, ?, ?::jsonb, ?)""", action, entityType, entityId,
+				json.writeValueAsString(details), MDC.get(TraceIdFilter.MDC_KEY));
+	}
+
 }

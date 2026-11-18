@@ -20,8 +20,8 @@ import com.bakedandbrowned.reporting.dto.DashboardDtos.DashboardSummary;
  * <li>{@code ordersToday}, {@code revenueToday}: booked orders placed today, those not in
  * PENDING_PAYMENT, CANCELLED or EXPIRED (ADR-0013), and the sum of their totals. Both use the same
  * set, so revenue divided by orders is the average booked order.</li>
- * <li>{@code collectedToday}: payments recorded as received today (verified_at today: manual
- * approvals and COD cash collection), gross of refunds. Online captures arrive in Phase 3.</li>
+ * <li>{@code collectedToday}: payments recorded as received today (verified_at for manual
+ * approvals and COD cash collection, captured_at for gateway-verified payments), gross of refunds.</li>
  * <li>{@code pendingOrders}: CONFIRMED orders waiting for the kitchen; {@code preparingOrders}:
  * PREPARING. Any day.</li>
  * <li>{@code awaitingPaymentVerification}: the size of the ADMIN verification queue (MANUAL
@@ -46,7 +46,7 @@ public class DashboardQueries {
 			  (SELECT count(*) FROM orders WHERE status = 'CONFIRMED') AS pending_orders,
 			  (SELECT count(*) FROM orders WHERE status = 'PREPARING') AS preparing_orders,
 			  (SELECT coalesce(sum(p.amount), 0) FROM payments p
-			   WHERE p.verified_at >= ? AND p.verified_at < ?
+			   WHERE coalesce(p.verified_at, p.captured_at) >= ? AND coalesce(p.verified_at, p.captured_at) < ?
 			     AND p.status IN ('SUCCEEDED', 'REFUNDED')) AS collected_today,
 			  (SELECT count(*) FROM payments p
 			   JOIN LATERAL (SELECT s.status FROM manual_payment_submissions s WHERE s.payment_id = p.id
