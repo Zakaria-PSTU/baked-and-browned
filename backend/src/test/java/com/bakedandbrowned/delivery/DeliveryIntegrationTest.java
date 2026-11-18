@@ -25,8 +25,14 @@ public abstract class DeliveryIntegrationTest extends CatalogIntegrationTest {
 	protected void resetDelivery() {
 		jdbc.execute("TRUNCATE delivery_slots CASCADE");
 		jdbc.update("DELETE FROM delivery_zones WHERE code NOT IN " + SEEDED);
-		jdbc.update("UPDATE delivery_zones SET delivery_fee = NULL, min_order_amount = NULL, active = FALSE WHERE code IN "
-				+ SEEDED);
+		// Restore the V3 seed exactly (tests may rename zones or change fees to prove snapshots hold).
+		jdbc.update("""
+				UPDATE delivery_zones z SET name = s.name, sort_order = s.sort_order,
+				       delivery_fee = NULL, min_order_amount = NULL, active = FALSE
+				FROM (VALUES ('DHANMONDI', 'Dhanmondi', 10), ('MOHAMMADPUR', 'Mohammadpur', 20), ('MIRPUR', 'Mirpur', 30),
+				             ('UTTARA', 'Uttara', 40), ('GULSHAN', 'Gulshan', 50), ('BANANI', 'Banani', 60))
+				     AS s(code, name, sort_order)
+				WHERE z.code = s.code""");
 	}
 
 	/** A Dhaka calendar date {@code days} from today. */

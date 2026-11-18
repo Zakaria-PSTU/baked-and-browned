@@ -75,6 +75,10 @@ app:
       refresh:
         limit: 30
         window: 5m
+      # Per user (order placement, including idempotent replays).
+      checkout:
+        limit: 20
+        window: 10m
 
 logging:
   pattern:
