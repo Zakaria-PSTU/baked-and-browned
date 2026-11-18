@@ -3,6 +3,7 @@ package com.bakedandbrowned.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,6 +26,7 @@ import com.bakedandbrowned.ordering.service.OrderEvents;
 import com.bakedandbrowned.payment.controller.OnlinePaymentController;
 import com.bakedandbrowned.payment.gateway.GatewayPaymentStatus;
 import com.bakedandbrowned.payment.gateway.ProviderCallback;
+import com.bakedandbrowned.payment.gateway.VerifiedPaymentResult;
 import com.bakedandbrowned.payment.gateway.fake.FakePaymentGateway;
 import com.bakedandbrowned.payment.service.GatewayResults;
 import com.bakedandbrowned.payment.service.GatewayResults.Outcome;
@@ -305,6 +307,45 @@ class OnlinePaymentIntegrationTests extends CheckoutIntegrationTest {
 			assertThat(caseTypes(orderId)).containsExactly("LATE_SUCCESS");
 		}
 		assertThat(reservedUnits(slot)).isEqualTo("CONFIRMED".equals(orderStatus(orderId)) ? 2 : 0);
+	}
+
+	@Test
+	void aHighRiskSuccessRecordsTheMoneyButWaitsForAnAdmin() throws Exception {
+		UUID orderId = onlineOrder();
+		String session = startSession(orderId);
+		gateway.settle(session, GatewayPaymentStatus.SUCCEEDED);
+		VerifiedPaymentResult verified = gateway.queryStatus(session);
+		VerifiedPaymentResult flagged = new VerifiedPaymentResult(verified.provider(), verified.eventId(),
+				verified.sessionId(), verified.transactionId(), verified.orderReference(), verified.amount(),
+				verified.currency(), verified.status(), true);
+
+		assertThat(results.apply(flagged)).isEqualTo(Outcome.HELD_FOR_REVIEW);
+
+		assertThat(orderStatus(orderId)).isEqualTo("PENDING_PAYMENT");
+		assertThat(paymentStatus(orderId)).isEqualTo("SUCCEEDED");
+		assertThat(caseTypes(orderId)).containsExactly("AMBIGUOUS_STATUS");
+		assertThat(jdbc.queryForObject(
+				"SELECT details->>'reason' FROM payment_reconciliation_cases WHERE order_id = ?", String.class, orderId))
+			.isEqualTo("HIGH_RISK");
+		// Paid, so the customer cannot open another attempt.
+		initiate(customer, orderId).andExpect(status().isConflict());
+	}
+
+	@Test
+	void theBrowserReturnOnlyRedirectsToTheOrderPage() throws Exception {
+		UUID orderId = onlineOrder();
+		String expected = "http://localhost:4200/orders/" + orderId + "/payment";
+
+		mockMvc.perform(get("/api/v1/payments/{id}/return", orderId))
+			.andExpect(status().isSeeOther())
+			.andExpect(header().string(HttpHeaders.LOCATION, expected));
+		// SSLCommerz may POST its form here; whatever it claims is ignored.
+		mockMvc.perform(post("/api/v1/payments/{id}/return", orderId).contentType(MediaType.APPLICATION_FORM_URLENCODED)
+				.content("status=VALID&tran_id=BBforged&val_id=forged"))
+			.andExpect(status().isSeeOther())
+			.andExpect(header().string(HttpHeaders.LOCATION, expected));
+		assertThat(orderStatus(orderId)).isEqualTo("PENDING_PAYMENT");
+		assertThat(count("payment_webhook_events")).isZero();
 	}
 
 	// ------------------------------------------------------------------ helpers

@@ -21,3 +21,4 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0015](0015-migration-policy.md) | Frozen V1 baseline, additive migrations | Accepted | 2026-11-16 |
 | [0016](0016-sms-notifications.md) | SMS order notices through a provider-agnostic SmsSender | Accepted | 2026-11-18 |
 | [0017](0017-refund-review-and-partial-refunds.md) | Second-approver refund review and partial refunds | Accepted | 2026-11-18 |
+| [0018](0018-sslcommerz-adapter.md) | SSLCommerz adapter from the public v4 docs | Proposed | 2026-11-18 |

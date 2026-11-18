@@ -64,6 +64,26 @@ public class OrderPaymentOutcomes {
 		return rows.stream().findFirst();
 	}
 
+	/** The order's delivery contact snapshot and the customer's account email, for a hosted checkout. */
+	public record CheckoutContact(String name, String phone, @Nullable String email, String address, String area) {
+
+		@Override
+		public String toString() {
+			return "CheckoutContact[redacted]";
+		}
+
+	}
+
+	@Transactional(propagation = Propagation.MANDATORY)
+	public CheckoutContact checkoutContact(UUID orderId) {
+		return jdbc.queryForObject("""
+				SELECT o.customer_name, o.customer_phone, u.email, o.delivery_address, o.delivery_area
+				FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?""",
+				(rs, row) -> new CheckoutContact(rs.getString("customer_name"), rs.getString("customer_phone"),
+						rs.getString("email"), rs.getString("delivery_address"), rs.getString("delivery_area")),
+				orderId);
+	}
+
 	/**
 	 * Payment verified: PENDING_PAYMENT → CONFIRMED, and the slot and stock holds become
 	 * confirmed reservations.

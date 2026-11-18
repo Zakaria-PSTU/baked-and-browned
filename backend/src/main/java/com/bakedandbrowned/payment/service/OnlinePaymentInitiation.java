@@ -19,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.bakedandbrowned.common.value.Money;
 import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.ordering.service.OrderPaymentOutcomes;
+import com.bakedandbrowned.ordering.service.OrderPaymentOutcomes.CheckoutContact;
 import com.bakedandbrowned.ordering.service.OrderPaymentOutcomes.PaymentOrder;
 import com.bakedandbrowned.ordering.service.OrderQueryService;
 import com.bakedandbrowned.payment.dto.PaymentDtos.PaymentInitiation;
@@ -26,6 +27,7 @@ import com.bakedandbrowned.payment.gateway.HostedPaymentSession;
 import com.bakedandbrowned.payment.gateway.PaymentGateway;
 import com.bakedandbrowned.payment.gateway.PaymentGateways;
 import com.bakedandbrowned.payment.gateway.PaymentSessionRequest;
+import com.bakedandbrowned.payment.gateway.PaymentSessionRequest.PaymentCustomer;
 
 /**
  * Contract {@code initiatePayment}: opens (or reopens) the hosted checkout of an ONLINE order that
@@ -65,17 +67,18 @@ public class OnlinePaymentInitiation {
 
 	private final Clock clock;
 
-	private final String returnUrlTemplate;
+	/** Public API origin, for the browser return endpoint the provider sends the customer to. */
+	private final String apiBaseUrl;
 
 	public OnlinePaymentInitiation(JdbcTemplate jdbc, TransactionTemplate transactions, OrderPaymentOutcomes orders,
 			PaymentGateways gateways, Clock clock,
-			@Value("${app.payments.online.return-url}") String returnUrlTemplate) {
+			@Value("${app.payments.online.api-base-url}") String apiBaseUrl) {
 		this.jdbc = jdbc;
 		this.transactions = transactions;
 		this.orders = orders;
 		this.gateways = gateways;
 		this.clock = clock;
-		this.returnUrlTemplate = returnUrlTemplate;
+		this.apiBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.substring(0, apiBaseUrl.length() - 1) : apiBaseUrl;
 	}
 
 	public PaymentInitiation initiate(UUID orderId, UUID customerId) {
@@ -89,7 +92,7 @@ public class OnlinePaymentInitiation {
 		HostedPaymentSession session;
 		try {
 			session = gateway.createSession(new PaymentSessionRequest(prepared.paymentId(), prepared.orderNumber(),
-					prepared.amount(), URI.create(returnUrlTemplate.replace("{orderId}", orderId.toString()))));
+					prepared.amount(), browserReturn(orderId), prepared.customer()));
 		}
 		catch (RuntimeException ex) {
 			// Nothing was stored; the customer can simply try again.
@@ -116,7 +119,8 @@ public class OnlinePaymentInitiation {
 		switch (status) {
 			case "PENDING" -> {
 				String checkout = (String) current.get("provider_checkout_url");
-				return new Prepared(paymentId, order.orderNumber(), amount, checkout == null ? null : URI.create(checkout));
+				return new Prepared(paymentId, order.orderNumber(), amount, checkout == null ? null : URI.create(checkout),
+						customer(orderId));
 			}
 			case "FAILED", "CANCELLED" -> {
 				// A finished, unsuccessful attempt: the retry is a new payment record (V5: retries supersede).
@@ -124,7 +128,7 @@ public class OnlinePaymentInitiation {
 				UUID retry = jdbc.queryForObject("""
 						INSERT INTO payments (order_id, method, amount, status) VALUES (?, 'ONLINE', ?, 'PENDING')
 						RETURNING id""", UUID.class, orderId, amount.amount());
-				return new Prepared(retry, order.orderNumber(), amount, null);
+				return new Prepared(retry, order.orderNumber(), amount, null, customer(orderId));
 			}
 			default -> throw ApiException.conflict(INVALID_STATE, "This order has already been paid.");
 		}
@@ -170,7 +174,18 @@ public class OnlinePaymentInitiation {
 		return result;
 	}
 
-	private record Prepared(UUID paymentId, String orderNumber, Money amount, @Nullable URI openCheckout) {
+	private PaymentCustomer customer(UUID orderId) {
+		CheckoutContact contact = orders.checkoutContact(orderId);
+		return new PaymentCustomer(contact.name(), contact.phone(), contact.email(), contact.address(), contact.area());
+	}
+
+	/** The provider sends the browser here; {@code PaymentReturnController} forwards it to the web app. */
+	private URI browserReturn(UUID orderId) {
+		return URI.create(apiBaseUrl + "/api/v1/payments/" + orderId + "/return");
+	}
+
+	private record Prepared(UUID paymentId, String orderNumber, Money amount, @Nullable URI openCheckout,
+			PaymentCustomer customer) {
 	}
 
 }

@@ -13,9 +13,17 @@ import com.bakedandbrowned.common.value.Money;
  * (provider, event_id)}: duplicate callbacks for the same outcome share it
  * @param transactionId the provider's transaction id; present once the payment succeeded
  * @param amount and {@code currency}: as reported by the provider, to be compared with the payment
+ * @param highRisk the provider flagged the payment as high risk (SSLCommerz {@code risk_level=1}):
+ * the money is recorded but the order waits for an ADMIN instead of being confirmed
  */
 public record VerifiedPaymentResult(String provider, String eventId, String sessionId, @Nullable String transactionId,
-		String orderReference, Money amount, String currency, GatewayPaymentStatus status) {
+		String orderReference, Money amount, String currency, GatewayPaymentStatus status, boolean highRisk) {
+
+	/** A result the provider did not flag. */
+	public VerifiedPaymentResult(String provider, String eventId, String sessionId, @Nullable String transactionId,
+			String orderReference, Money amount, String currency, GatewayPaymentStatus status) {
+		this(provider, eventId, sessionId, transactionId, orderReference, amount, currency, status, false);
+	}
 
 	public VerifiedPaymentResult {
 		Objects.requireNonNull(provider, "provider");

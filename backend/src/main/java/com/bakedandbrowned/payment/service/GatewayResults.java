@@ -40,6 +40,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <li>SUCCEEDED for an order still waiting for payment confirms it (its holds were never released,
  * so this cannot oversell). For an EXPIRED or CANCELLED order it records the money and opens a
  * LATE_SUCCESS case, never an automatic confirmation.</li>
+ * <li>A success the provider flags as high risk records the money but does not confirm the order:
+ * an AMBIGUOUS_STATUS case (reason HIGH_RISK) waits for an ADMIN.</li>
  * <li>FAILED or CANCELLED ends that attempt only: the order keeps waiting, so the customer can
  * retry within the hold, and hold expiry releases it otherwise.</li>
  * <li>Anything contradictory (success on a replaced attempt, failure after success) changes
@@ -52,7 +54,8 @@ public class GatewayResults {
 	/** What applying a result did; for logs and tests. */
 	public enum Outcome {
 
-		DUPLICATE, UNKNOWN_SESSION, NO_CHANGE, CONFIRMED, ATTEMPT_ENDED, LATE_SUCCESS, AMOUNT_MISMATCH, AMBIGUOUS
+		DUPLICATE, UNKNOWN_SESSION, NO_CHANGE, CONFIRMED, HELD_FOR_REVIEW, ATTEMPT_ENDED, LATE_SUCCESS, AMOUNT_MISMATCH,
+		AMBIGUOUS
 
 	}
 
@@ -152,6 +155,12 @@ public class GatewayResults {
 				UPDATE payments SET status = 'SUCCEEDED', provider_transaction_id = ?, failure_reason = NULL,
 				                    captured_at = ?
 				WHERE id = ?""", result.transactionId(), Timestamp.from(now), payment.id());
+		if (waiting && result.highRisk()) {
+			// The provider advises holding the service: the money is recorded, the order is not
+			// confirmed, and an ADMIN decides (reinstate after checks, or refund).
+			openCase(payment.id(), order.id(), "AMBIGUOUS_STATUS", reason("HIGH_RISK", result.transactionId()));
+			return Outcome.HELD_FOR_REVIEW;
+		}
 		if (waiting) {
 			orders.confirmPaidByGateway(order.id());
 			return Outcome.CONFIRMED;

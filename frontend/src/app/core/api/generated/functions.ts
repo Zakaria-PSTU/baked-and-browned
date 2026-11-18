@@ -33,6 +33,10 @@ export type { CancelMyOrder$Params as CancelMyOrder$Params } from './fn/orders/c
 export { cancelMyOrder as cancelMyOrder } from './fn/orders/cancel-my-order';
 export type { InitiatePayment$Params as InitiatePayment$Params } from './fn/payments/initiate-payment';
 export { initiatePayment as initiatePayment } from './fn/payments/initiate-payment';
+export type { PaymentReturn$Params as PaymentReturn$Params } from './fn/payments/payment-return';
+export { paymentReturn as paymentReturn } from './fn/payments/payment-return';
+export type { PaymentReturnPost$Params as PaymentReturnPost$Params } from './fn/payments/payment-return-post';
+export { paymentReturnPost as paymentReturnPost } from './fn/payments/payment-return-post';
 export type { SubmitManualPayment$Params as SubmitManualPayment$Params } from './fn/payments/submit-manual-payment';
 export { submitManualPayment as submitManualPayment } from './fn/payments/submit-manual-payment';
 export type { PaymentWebhook$Json$Params as PaymentWebhook$Json$Params } from './fn/payments/payment-webhook-json';

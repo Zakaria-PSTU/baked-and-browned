@@ -53,8 +53,12 @@ public class SecurityConfig {
 						pathPattern(HttpMethod.GET, "/api/v1/delivery-slots"),
 						pathPattern(HttpMethod.GET, "/api/v1/delivery-zones"))
 				.permitAll()
-				// Gateway callbacks authenticate by signature verification (Phase 3), not by user.
+				// Gateway callbacks are verified server to server with the provider, not by user.
 				.requestMatchers(pathPattern(HttpMethod.POST, "/api/v1/payments/webhooks/{provider}"))
+				.permitAll()
+				// The provider sends the browser back here; it only redirects to the web app.
+				.requestMatchers(pathPattern(HttpMethod.GET, "/api/v1/payments/{orderId}/return"),
+						pathPattern(HttpMethod.POST, "/api/v1/payments/{orderId}/return"))
 				.permitAll()
 				.requestMatchers(pathPattern(HttpMethod.GET, "/actuator/health"),
 						pathPattern(HttpMethod.GET, "/actuator/health/**"))

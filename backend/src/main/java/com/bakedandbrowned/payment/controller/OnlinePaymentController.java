@@ -78,6 +78,7 @@ public class OnlinePaymentController {
 			@Nullable @org.springframework.web.bind.annotation.RequestHeader(name = HttpHeaders.CONTENT_TYPE,
 					required = false) String contentType,
 			HttpServletRequest request) {
+		rateLimiter.check("payment-webhook", request.getRemoteAddr());
 		PaymentGateway gateway = gateways.byProvider(provider)
 			.orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, UNKNOWN_PROVIDER, "Unknown payment provider."));
 		VerifiedPaymentResult result;

@@ -83,6 +83,25 @@ app:
       # Where the customer's browser lands after the hosted page; never proof of payment. Set
       # APP_PAYMENTS_ONLINE_RETURN_URL to the production web origin.
       return-url: http://localhost:4200/orders/{orderId}/payment
+      # Public origin of this API: hosted pages send the browser back to {api-base-url}/api/v1/payments/{orderId}/return.
+      # Set APP_PAYMENTS_ONLINE_API_BASE_URL in deployments.
+      api-base-url: http://localhost:8080
+    sslcommerz:
+      # SslCommerzGateway (ADR-0012). Off unless enabled; then every value below is required. Credentials only from
+      # the environment: APP_PAYMENTS_SSLCOMMERZ_STORE_ID, APP_PAYMENTS_SSLCOMMERZ_STORE_PASSWORD.
+      enabled: false
+      base-url: https://sandbox.sslcommerz.com
+      store-id:
+      store-password:
+      # Public webhook URL, e.g. https://api.bakedandbrowned.com.bd/api/v1/payments/webhooks/sslcommerz
+      ipn-url:
+      # SSLCommerz requires a customer email; used when the account has none (APP_PAYMENTS_SSLCOMMERZ_FALLBACK_CUSTOMER_EMAIL).
+      fallback-customer-email:
+      customer-city: Dhaka
+      customer-postcode: "1000"
+      customer-country: Bangladesh
+      connect-timeout: 5s
+      read-timeout: 20s
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
       checkout-base-url: http://localhost:4200/dev/fake-gateway
@@ -108,6 +127,10 @@ app:
       payment-initiation:
         limit: 20
         window: 15m
+      # Per client IP: each verified notice costs a server-to-server call to the provider.
+      payment-webhook:
+        limit: 120
+        window: 1m
 
 logging:
   pattern:

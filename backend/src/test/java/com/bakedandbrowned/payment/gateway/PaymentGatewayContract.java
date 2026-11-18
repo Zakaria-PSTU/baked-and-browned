@@ -27,9 +27,23 @@ public abstract class PaymentGatewayContract {
 	/** Provider side: the authentic callback for the session, claiming {@code claimedStatus}. */
 	protected abstract ProviderCallback authenticCallback(String sessionId, GatewayPaymentStatus claimedStatus);
 
+	/**
+	 * Forged or tampered variants of an authentic callback that the adapter must reject. By default:
+	 * the same body without its headers (a missing signature) and with the session id altered.
+	 * Adapters whose authenticity lies elsewhere (SSLCommerz: the validation id) override this.
+	 */
+	protected java.util.List<ProviderCallback> forgeries(ProviderCallback authentic, String sessionId) {
+		return java.util.List.of(
+				new ProviderCallback(authentic.provider(), authentic.contentType(), java.util.Map.of(), authentic.body()),
+				new ProviderCallback(authentic.provider(), authentic.contentType(), authentic.headers(),
+						authentic.body().replace(sessionId, sessionId + "x")));
+	}
+
 	protected PaymentSessionRequest request(String reference, String amount) {
 		return new PaymentSessionRequest(UUID.randomUUID(), reference, Money.of(amount),
-				URI.create("https://bakedandbrowned.com.bd/orders/" + reference));
+				URI.create("https://bakedandbrowned.com.bd/orders/" + reference),
+				new PaymentSessionRequest.PaymentCustomer("Nusrat Jahan", "+8801712345678", null, "House 12, Road 5",
+						"Dhanmondi"));
 	}
 
 	@Test
@@ -107,12 +121,7 @@ public abstract class PaymentGatewayContract {
 		String session = gateway().createSession(request("BB-1008", "750.00")).sessionId();
 		ProviderCallback authentic = authenticCallback(session, GatewayPaymentStatus.SUCCEEDED);
 
-		ProviderCallback unsigned = new ProviderCallback(authentic.provider(), authentic.contentType(),
-				java.util.Map.of(), authentic.body());
-		ProviderCallback tampered = new ProviderCallback(authentic.provider(), authentic.contentType(),
-				authentic.headers(), authentic.body().replace(session, session + "x"));
-
-		for (ProviderCallback forged : new ProviderCallback[] { unsigned, tampered }) {
+		for (ProviderCallback forged : forgeries(authentic, session)) {
 			assertThatThrownBy(() -> gateway().verify(forged)).isInstanceOf(PaymentVerificationException.class);
 		}
 	}

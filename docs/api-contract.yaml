@@ -295,6 +295,35 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /payments/{orderId}/return:
+    get:
+      tags: [Payments]
+      operationId: paymentReturn
+      description: |
+        Where a hosted payment page sends the customer's browser back (success,
+        failure or cancellation). Public and inert: it reads nothing the browser
+        sends, changes nothing, and redirects to the web app's order page. Never
+        proof of payment; only the verified provider callback is.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '303':
+          description: Redirect to the web app's order page
+          headers:
+            Location:
+              schema: {type: string, format: uri}
+    post:
+      tags: [Payments]
+      operationId: paymentReturnPost
+      description: Same as GET, for providers that return the browser with a form POST.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '303':
+          description: Redirect to the web app's order page
+          headers:
+            Location:
+              schema: {type: string, format: uri}
   /payments/{orderId}/manual-submission:
     post:
       tags: [Payments]
