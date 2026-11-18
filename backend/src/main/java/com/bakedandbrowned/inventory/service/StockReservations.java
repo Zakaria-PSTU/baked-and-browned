@@ -39,6 +39,28 @@ public class StockReservations {
 	}
 
 	/**
+	 * Whether {@code needed} is available right now (on hand minus reserved), without reserving.
+	 * Informative only: a concurrent checkout may take the stock before this caller reserves it.
+	 */
+	@Transactional(readOnly = true)
+	public boolean available(Map<UUID, Quantity> needed) {
+		if (needed.isEmpty()) {
+			return true;
+		}
+		Map<UUID, BigDecimal> free = new java.util.HashMap<>();
+		jdbc.query(con -> {
+			var ps = con.prepareStatement("SELECT id, on_hand - reserved AS free FROM ingredients WHERE id = ANY (?)");
+			ps.setArray(1, con.createArrayOf("uuid", needed.keySet().toArray()));
+			return ps;
+		}, rs -> {
+			free.put(rs.getObject("id", UUID.class), rs.getBigDecimal("free"));
+		});
+		return needed.entrySet()
+			.stream()
+			.allMatch(e -> free.containsKey(e.getKey()) && free.get(e.getKey()).compareTo(e.getValue().value()) >= 0);
+	}
+
+	/**
 	 * Reserves {@code needed} (ingredient id to quantity, ascending id order) for {@code orderId}.
 	 * @throws ApiException 409 {@link #INSUFFICIENT_STOCK} if any ingredient lacks available stock
 	 */

@@ -66,6 +66,22 @@ public class SlotService {
 			.toList();
 	}
 
+	/** A slot as other modules see it (quote, checkout). */
+	public record SlotView(UUID id, Instant startAt, Instant endAt, int remainingUnits, boolean active) {
+
+		/** Open for new bookings at {@code now}: active and not yet started. */
+		public boolean bookableAt(Instant now) {
+			return active && startAt.isAfter(now);
+		}
+
+	}
+
+	@Transactional(readOnly = true)
+	public java.util.Optional<SlotView> find(UUID id) {
+		return slots.findById(id)
+			.map(s -> new SlotView(s.getId(), s.getStartAt(), s.getEndAt(), s.getRemainingUnits(), s.isActive()));
+	}
+
 	@Transactional(readOnly = true)
 	public List<AdminSlotResponse> between(LocalDate from, LocalDate to) {
 		if (to.isBefore(from)) {
