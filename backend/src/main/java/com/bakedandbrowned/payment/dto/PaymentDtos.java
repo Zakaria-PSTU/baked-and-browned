@@ -36,6 +36,13 @@ public final class PaymentDtos {
 
 	}
 
+	/** Contract {@code Refund}. */
+	public record Refund(UUID id, UUID paymentId, UUID orderId, Money amount, String currency, String status,
+			String requestReason, String requestedByType, @Nullable UUID decidedBy, @Nullable Instant decidedAt,
+			@Nullable String decisionNote, @Nullable String externalReference, @Nullable Instant completedAt,
+			Instant createdAt) {
+	}
+
 	/** Contract {@code AdminPayment}. */
 	public record AdminPayment(UUID id, UUID orderId, String orderNumber, String method, @Nullable String provider,
 			@Nullable String providerTransactionId, Money amount, String currency, String status,

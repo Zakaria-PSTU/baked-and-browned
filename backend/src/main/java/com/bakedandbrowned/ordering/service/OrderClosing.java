@@ -90,6 +90,23 @@ class OrderClosing {
 		}
 	}
 
+	/**
+	 * A cancelled order whose payment already succeeded is not refunded automatically: this opens a
+	 * full refund request for the ADMIN refund workflow (at most one active request per payment).
+	 * @return whether a request was opened
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	boolean requestRefundIfPaid(UUID orderId, CurrentPayment payment, Actor actor, UUID actorUserId, String reason) {
+		if (!"SUCCEEDED".equals(payment.status()) || payment.amount().signum() <= 0) {
+			return false;
+		}
+		return jdbc.update("""
+				INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type, requested_by)
+				VALUES (?, ?, ?, ?, ?::actor_type, ?)
+				ON CONFLICT DO NOTHING""", payment.id(), orderId, payment.amount(), reason, actor.name(),
+				actorUserId) == 1;
+	}
+
 	record CurrentPayment(UUID id, String status, java.math.BigDecimal amount) {
 	}
 

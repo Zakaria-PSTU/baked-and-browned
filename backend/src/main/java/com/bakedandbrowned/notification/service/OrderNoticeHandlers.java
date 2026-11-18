@@ -23,6 +23,11 @@ class OrderNoticeHandlers {
 	}
 
 	@Bean
+	OutboxHandler orderDispatchedNotice(OrderNotificationDelivery delivery) {
+		return new NoticeHandler(OrderEvents.DISPATCHED, Kind.ORDER_DISPATCHED, delivery);
+	}
+
+	@Bean
 	OutboxHandler orderCancelledNotice(OrderNotificationDelivery delivery) {
 		return new NoticeHandler(OrderEvents.CANCELLED, Kind.ORDER_CANCELLED, delivery);
 	}

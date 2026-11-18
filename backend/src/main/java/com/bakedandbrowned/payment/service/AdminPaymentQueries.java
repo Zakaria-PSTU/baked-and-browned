@@ -16,6 +16,7 @@ import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.common.web.PageResponse;
 import com.bakedandbrowned.payment.dto.PaymentDtos.AdminPayment;
 import com.bakedandbrowned.payment.dto.PaymentDtos.ManualPaymentSubmission;
+import com.bakedandbrowned.payment.dto.PaymentDtos.Refund;
 import com.bakedandbrowned.payment.proof.ProofFiles;
 import com.bakedandbrowned.payment.proof.ProofStorage;
 
@@ -84,6 +85,33 @@ public class AdminPaymentQueries {
 			.stream()
 			.findFirst()
 			.orElseThrow(() -> ApiException.notFound(PAYMENT_NOT_FOUND, "Payment not found."));
+	}
+
+	/** Every payment of the order, including superseded attempts, oldest first. */
+	public List<AdminPayment> forOrder(UUID orderId) {
+		return jdbc.query("SELECT " + COLUMNS + " WHERE p.order_id = ? ORDER BY p.created_at, p.id",
+				(rs, row) -> payment(rs), orderId);
+	}
+
+	/** Every refund request of the order, oldest first. */
+	public List<Refund> refunds(UUID orderId) {
+		return jdbc.query("""
+				SELECT id, payment_id, order_id, amount, currency, status::text AS status, request_reason,
+				       requested_by_type::text AS requested_by_type, decided_by, decided_at, decision_note,
+				       external_reference, completed_at, created_at
+				FROM refunds WHERE order_id = ? ORDER BY created_at, id""",
+				(rs, row) -> new Refund(rs.getObject("id", UUID.class), rs.getObject("payment_id", UUID.class),
+						rs.getObject("order_id", UUID.class), Money.of(rs.getBigDecimal("amount")),
+						rs.getString("currency").strip(), rs.getString("status"), rs.getString("request_reason"),
+						rs.getString("requested_by_type"), rs.getObject("decided_by", UUID.class),
+						instant(rs, "decided_at"), rs.getString("decision_note"), rs.getString("external_reference"),
+						instant(rs, "completed_at"), rs.getTimestamp("created_at").toInstant()),
+				orderId);
+	}
+
+	private static java.time.@Nullable Instant instant(ResultSet rs, String column) throws SQLException {
+		java.sql.Timestamp value = rs.getTimestamp(column);
+		return value == null ? null : value.toInstant();
 	}
 
 	/** The proof file of the payment's latest submission. */

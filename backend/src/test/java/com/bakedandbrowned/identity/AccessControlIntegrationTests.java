@@ -65,9 +65,8 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 		String adminPhone = phone();
 		adminProvisioning.provisionFirstAdmin("Store Admin", PhoneNumber.of(adminPhone), null, PASSWORD);
 		Session admin = login(adminPhone, PASSWORD);
-		// Authorized; there is no admin controller yet, so MVC answers 404.
 		mockMvc.perform(get("/api/v1/admin/orders").header(HttpHeaders.AUTHORIZATION, admin.bearer()))
-			.andExpect(status().isNotFound());
+			.andExpect(status().isOk());
 	}
 
 	@Test
@@ -96,7 +95,7 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 		// The control: a well-formed token from the application key is accepted.
 		mockMvc.perform(get("/api/v1/admin/orders")
 			.header(HttpHeaders.AUTHORIZATION, "Bearer " + encode(jwtEncoder, valid(now).claim("roles", List.of("ADMIN")))))
-			.andExpect(status().isNotFound());
+			.andExpect(status().isOk());
 	}
 
 	@Test
