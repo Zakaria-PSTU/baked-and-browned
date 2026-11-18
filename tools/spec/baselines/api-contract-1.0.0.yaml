@@ -1,0 +1,619 @@
+openapi: 3.0.3
+info:
+  title: Baked & Browned API
+  version: 1.0.0
+  description: |
+    MVP contract for an online bakery in Dhaka. Prices are server-calculated.
+    JWT bearer authentication protects customer/admin endpoints. Refresh token
+    uses a Secure HttpOnly cookie and a separate CSRF defense.
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: Catalog
+  - name: Checkout
+  - name: Orders
+  - name: Payments
+  - name: Admin
+security: []
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a customer
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in; response sets HttpOnly refresh cookie
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Access token and user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token using cookie and CSRF token
+      operationId: refresh
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Rotated refresh cookie and new access token
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh session
+      operationId: logout
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '204': {description: Logged out}
+  /auth/me:
+    get:
+      tags: [Auth]
+      security: [{bearerAuth: []}]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /categories:
+    get:
+      tags: [Catalog]
+      operationId: listCategories
+      responses:
+        '200':
+          description: Active categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Category'}
+  /products:
+    get:
+      tags: [Catalog]
+      operationId: listProducts
+      parameters:
+        - {name: category, in: query, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Paginated active products
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProductPage'}
+  /products/{slug}:
+    get:
+      tags: [Catalog]
+      operationId: getProduct
+      parameters:
+        - {$ref: '#/components/parameters/Slug'}
+      responses:
+        '200':
+          description: Product with available customizations
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /delivery-slots:
+    get:
+      tags: [Catalog]
+      operationId: listDeliverySlots
+      parameters:
+        - {name: date, in: query, required: true, schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: Available slots (not a capacity guarantee)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DeliverySlot'}
+  /checkout/quote:
+    post:
+      tags: [Checkout]
+      security: [{bearerAuth: []}]
+      operationId: quoteCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutQuoteRequest'}
+      responses:
+        '200':
+          description: Server-calculated nonbinding quote
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutQuote'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /orders:
+    post:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: placeOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlaceOrderRequest'}
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+    get:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: listMyOrders
+      responses:
+        '200':
+          description: Orders belonging to authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Order'}
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      security: [{bearerAuth: []}]
+      operationId: getOrder
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: Owned order or admin
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /payments/{orderId}/initiate:
+    post:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: initiatePayment
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '200':
+          description: Hosted checkout session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paymentId, checkoutUrl]
+                properties:
+                  paymentId: {$ref: '#/components/schemas/Uuid'}
+                  checkoutUrl: {type: string, format: uri}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /payments/webhooks/{provider}:
+    post:
+      tags: [Payments]
+      operationId: paymentWebhook
+      description: Provider-specific signed/verified callback; idempotent processing.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        '200': {description: Accepted or already processed}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /admin/orders:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminListOrders
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/OrderStatus'}}
+      responses:
+        '200':
+          description: All orders for admin
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Order'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/orders/{orderId}/status:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminChangeOrderStatus
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {$ref: '#/components/schemas/OrderStatus'}
+      responses:
+        '200':
+          description: Updated order
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/products:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductWrite'}
+      responses:
+        '201':
+          description: Created product
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+  /admin/products/{productId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminUpdateProduct
+      parameters:
+        - {name: productId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductWrite'}
+      responses:
+        '200':
+          description: Updated product
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+  /admin/delivery-slots:
+    post:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminCreateSlot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliverySlotWrite'}
+      responses:
+        '201':
+          description: Slot created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliverySlot'}
+  /admin/inventory/{ingredientId}:
+    patch:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminAdjustInventory
+      parameters:
+        - {name: ingredientId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [onHand, reason]
+              properties:
+                onHand: {type: number, minimum: 0}
+                reason: {type: string, minLength: 3, maxLength: 300}
+      responses:
+        '200': {description: Inventory updated}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/dashboard/summary:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminDashboardSummary
+      responses:
+        '200':
+          description: Sales and operations summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ordersToday, revenueToday, pendingOrders, preparingOrders]
+                properties:
+                  ordersToday: {type: integer}
+                  revenueToday: {$ref: '#/components/schemas/Money'}
+                  pendingOrders: {type: integer}
+                  preparingOrders: {type: integer}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema: {type: string}
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unauthorized:
+      description: Unauthenticated
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Forbidden:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Conflict:
+      description: Capacity, inventory or state conflict
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unprocessable:
+      description: Invalid business input
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    Uuid: {type: string, format: uuid}
+    Money:
+      type: number
+      format: double
+      minimum: 0
+      description: BDT amount with two decimal places; use decimal type in backend.
+    User:
+      type: object
+      required: [id, fullName, phone, role]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        fullName: {type: string}
+        phone: {type: string}
+        email: {type: string, format: email, nullable: true}
+        role: {type: string, enum: [CUSTOMER, ADMIN]}
+    RegisterRequest:
+      type: object
+      required: [fullName, phone, password]
+      properties:
+        fullName: {type: string, minLength: 2, maxLength: 150}
+        phone: {type: string, pattern: '^\\+8801[3-9][0-9]{8}$'}
+        email: {type: string, format: email}
+        password: {type: string, minLength: 12}
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: {type: string}
+        password: {type: string}
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: {type: string}
+        tokenType: {type: string, enum: [Bearer]}
+        expiresIn: {type: integer, description: Seconds}
+        user: {$ref: '#/components/schemas/User'}
+    Category:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+    Option:
+      type: object
+      required: [id, name, priceDelta]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        priceDelta: {$ref: '#/components/schemas/Money'}
+    CustomizationGroup:
+      type: object
+      required: [id, code, selectionType, required, minSelections, maxSelections, options]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        selectionType: {type: string, enum: [SINGLE, MULTIPLE, TEXT]}
+        required: {type: boolean}
+        minSelections: {type: integer, minimum: 0}
+        maxSelections: {type: integer, minimum: 1}
+        options:
+          type: array
+          items: {$ref: '#/components/schemas/Option'}
+    Product:
+      type: object
+      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+        categoryId: {$ref: '#/components/schemas/Uuid'}
+        description: {type: string, nullable: true}
+        imageUrl: {type: string, nullable: true}
+        basePrice: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+        minLeadHours: {type: integer, minimum: 0}
+        customizationGroups:
+          type: array
+          items: {$ref: '#/components/schemas/CustomizationGroup'}
+    ProductPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          items: {$ref: '#/components/schemas/Product'}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer}
+    ProductWrite:
+      type: object
+      required: [categoryId, name, slug, basePrice, minLeadHours, productionUnits]
+      properties:
+        categoryId: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        slug: {type: string}
+        description: {type: string}
+        basePrice: {$ref: '#/components/schemas/Money'}
+        minLeadHours: {type: integer, minimum: 0}
+        productionUnits: {type: integer, minimum: 1}
+        status: {type: string, enum: [DRAFT, ACTIVE, ARCHIVED]}
+    DeliverySlot:
+      type: object
+      required: [id, startAt, endAt, remainingUnits]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        remainingUnits: {type: integer, minimum: 0}
+    DeliverySlotWrite:
+      type: object
+      required: [startAt, endAt, capacityUnits]
+      properties:
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        capacityUnits: {type: integer, minimum: 1}
+        active: {type: boolean, default: true}
+    CartLine:
+      type: object
+      required: [productId, quantity, selectedOptionIds, customTexts]
+      properties:
+        productId: {$ref: '#/components/schemas/Uuid'}
+        quantity: {type: integer, minimum: 1, maximum: 50}
+        selectedOptionIds:
+          type: array
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        customTexts:
+          type: object
+          additionalProperties: {type: string, maxLength: 250}
+          description: Map of customization group UUID to text.
+    DeliveryAddress:
+      type: object
+      required: [name, phone, area, address]
+      properties:
+        name: {type: string, maxLength: 150}
+        phone: {type: string}
+        area: {type: string, maxLength: 120}
+        address: {type: string, minLength: 5}
+        notes: {type: string}
+    CheckoutQuoteRequest:
+      type: object
+      required: [deliverySlotId, delivery, items]
+      properties:
+        deliverySlotId: {$ref: '#/components/schemas/Uuid'}
+        delivery: {$ref: '#/components/schemas/DeliveryAddress'}
+        items:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/CartLine'}
+    CheckoutQuote:
+      type: object
+      required: [subtotal, deliveryFee, discount, total, currency]
+      properties:
+        subtotal: {$ref: '#/components/schemas/Money'}
+        deliveryFee: {$ref: '#/components/schemas/Money'}
+        discount: {$ref: '#/components/schemas/Money'}
+        total: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+    PlaceOrderRequest:
+      allOf:
+        - {$ref: '#/components/schemas/CheckoutQuoteRequest'}
+        - type: object
+          required: [idempotencyKey, paymentMethod]
+          properties:
+            idempotencyKey: {$ref: '#/components/schemas/Uuid'}
+            paymentMethod: {type: string, enum: [COD, MANUAL, ONLINE]}
+    OrderStatus:
+      type: string
+      enum: [PENDING_PAYMENT, CONFIRMED, PREPARING, READY, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, EXPIRED]
+    PaymentStatus:
+      type: string
+      enum: [PENDING, SUCCEEDED, FAILED, CANCELLED, REFUNDED]
+    Order:
+      type: object
+      required: [orderId, orderNumber, status, paymentStatus, subtotal, deliveryFee, discount, total, currency]
+      properties:
+        orderId: {$ref: '#/components/schemas/Uuid'}
+        orderNumber: {type: string}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        paymentStatus: {$ref: '#/components/schemas/PaymentStatus'}
+        subtotal: {$ref: '#/components/schemas/Money'}
+        deliveryFee: {$ref: '#/components/schemas/Money'}
+        discount: {$ref: '#/components/schemas/Money'}
+        total: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [BDT]}
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code: {type: string}
+        traceId: {type: string}
