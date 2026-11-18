@@ -1143,17 +1143,30 @@ paths:
                 type: object
                 required: [ordersToday, revenueToday, pendingOrders, preparingOrders]
                 properties:
-                  ordersToday: {type: integer}
+                  ordersToday:
+                    type: integer
+                    description: Booked orders placed today — the same set as revenueToday.
                   revenueToday:
                     allOf:
                       - {$ref: '#/components/schemas/Money'}
                     description: Booked revenue — total of today's orders not in PENDING_PAYMENT, CANCELLED or EXPIRED.
-                  pendingOrders: {type: integer}
-                  preparingOrders: {type: integer}
-                  collectedToday: {$ref: '#/components/schemas/Money'}
-                  awaitingPaymentVerification: {type: integer}
+                  pendingOrders:
+                    type: integer
+                    description: Orders in CONFIRMED (paid or COD, waiting to be prepared), any day.
+                  preparingOrders:
+                    type: integer
+                    description: Orders in PREPARING, any day.
+                  collectedToday:
+                    allOf:
+                      - {$ref: '#/components/schemas/Money'}
+                    description: Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+                  awaitingPaymentVerification:
+                    type: integer
+                    description: MANUAL payments whose latest submission awaits ADMIN verification.
                   openReconciliationCases: {type: integer}
-                  lowStockIngredients: {type: integer}
+                  lowStockIngredients:
+                    type: integer
+                    description: Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
         '403': {$ref: '#/components/responses/Forbidden'}
   /admin/reports/daily-sales:
     get:

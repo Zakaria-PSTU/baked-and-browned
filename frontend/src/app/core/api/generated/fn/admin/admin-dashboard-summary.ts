@@ -13,17 +13,41 @@ export interface AdminDashboardSummary$Params {
 }
 
 export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?: AdminDashboardSummary$Params, context?: HttpContext): Observable<StrictHttpResponse<{
+
+/**
+ * Booked orders placed today — the same set as revenueToday.
+ */
 'ordersToday': number;
 
 /**
  * Booked revenue — total of today's orders not in PENDING_PAYMENT, CANCELLED or EXPIRED.
  */
 'revenueToday': Money;
+
+/**
+ * Orders in CONFIRMED (paid or COD, waiting to be prepared), any day.
+ */
 'pendingOrders': number;
+
+/**
+ * Orders in PREPARING, any day.
+ */
 'preparingOrders': number;
+
+/**
+ * Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+ */
 'collectedToday'?: Money;
+
+/**
+ * MANUAL payments whose latest submission awaits ADMIN verification.
+ */
 'awaitingPaymentVerification'?: number;
 'openReconciliationCases'?: number;
+
+/**
+ * Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
+ */
 'lowStockIngredients'?: number;
 }>> {
   const rb = new RequestBuilder(rootUrl, adminDashboardSummary.PATH, 'get');
@@ -36,17 +60,41 @@ export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<{
+      
+      /**
+       * Booked orders placed today — the same set as revenueToday.
+       */
       'ordersToday': number;
       
       /**
        * Booked revenue — total of today's orders not in PENDING_PAYMENT, CANCELLED or EXPIRED.
        */
       'revenueToday': Money;
+      
+      /**
+       * Orders in CONFIRMED (paid or COD, waiting to be prepared), any day.
+       */
       'pendingOrders': number;
+      
+      /**
+       * Orders in PREPARING, any day.
+       */
       'preparingOrders': number;
+      
+      /**
+       * Payments recorded as received today (manual approvals, COD cash collected), gross of refunds.
+       */
       'collectedToday'?: Money;
+      
+      /**
+       * MANUAL payments whose latest submission awaits ADMIN verification.
+       */
       'awaitingPaymentVerification'?: number;
       'openReconciliationCases'?: number;
+      
+      /**
+       * Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
+       */
       'lowStockIngredients'?: number;
       }>;
     })

@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { requireSignedIn, requireSignedOut } from './core/auth/auth.guards';
+import { requireAdmin, requireSignedIn, requireSignedOut } from './core/auth/auth.guards';
 
 /** Feature routes are lazy; guards are UX only (the API enforces access). */
 export const routes: Routes = [
@@ -31,6 +31,13 @@ export const routes: Routes = [
     title: 'Your account · Baked & Browned',
     canMatch: [requireSignedIn],
     loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
+  },
+  {
+    path: 'admin',
+    title: 'Dashboard · Baked & Browned',
+    canMatch: [requireAdmin],
+    loadComponent: () =>
+      import('./features/admin/admin-dashboard-page').then((m) => m.AdminDashboardPage),
   },
   {
     path: '**',

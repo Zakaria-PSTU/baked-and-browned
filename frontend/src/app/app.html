@@ -4,6 +4,11 @@
       <a routerLink="/" class="text-xl font-semibold tracking-tight">{{ brandName }}</a>
       <nav aria-label="Account" class="flex items-center gap-4 text-sm">
         @if (user(); as u) {
+          @if (isAdmin()) {
+            <a routerLink="/admin" routerLinkActive="font-semibold" class="hover:underline"
+              >Dashboard</a
+            >
+          }
           <a routerLink="/account" routerLinkActive="font-semibold" class="hover:underline">{{
             u.fullName
           }}</a>

@@ -15,7 +15,10 @@ export class App {
   private readonly router = inject(Router);
 
   protected readonly brandName = 'Baked & Browned';
-  protected readonly user = inject(AuthSession).user;
+  private readonly session = inject(AuthSession);
+
+  protected readonly user = this.session.user;
+  protected readonly isAdmin = this.session.isAdmin;
 
   protected logout(): void {
     // The local session is cleared even if the request fails; go home either way.
