@@ -26,7 +26,7 @@ import com.bakedandbrowned.IntegrationTest;
  * real signed access tokens for real user rows (the audit actor is a foreign key).
  */
 @IntegrationTest
-abstract class CatalogIntegrationTest {
+public abstract class CatalogIntegrationTest {
 
 	private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
@@ -41,7 +41,7 @@ abstract class CatalogIntegrationTest {
 
 	@BeforeEach
 	@AfterEach
-	void resetCatalog() {
+	protected void resetCatalog() {
 		jdbc.execute("TRUNCATE categories, customization_groups, users, audit_events CASCADE");
 	}
 
