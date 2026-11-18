@@ -114,6 +114,24 @@ class OutboxIntegrationTests {
 	}
 
 	@Test
+	void aBatchIsDeliveredInTheOrderTheEventsWereCreated() {
+		UUID aggregate = UUID.randomUUID();
+		List<UUID> published = new ArrayList<>();
+		for (int i = 0; i < 20; i++) {
+			published.add(publish(aggregate, "order.confirmed", Map.of("n", i)));
+		}
+		List<UUID> received = new ArrayList<>();
+		OutboxDispatcher dispatcher = dispatcher(handler("order.confirmed", message -> received.add(message.id())));
+
+		// Four batches of five: within and across batches, oldest first.
+		for (int batch = 0; batch < 4; batch++) {
+			assertThat(dispatcher.dispatchDue()).isEqualTo(5);
+		}
+
+		assertThat(received).containsExactlyElementsOf(published);
+	}
+
+	@Test
 	void eventsWithoutAHandlerStayPendingWithAnError() {
 		publish(UUID.randomUUID(), "unknown.event", Map.of());
 

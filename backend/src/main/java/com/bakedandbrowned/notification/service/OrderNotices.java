@@ -31,14 +31,14 @@ public final class OrderNotices {
 
 	/** Matches the {@code notifications.kind} check constraint. */
 	public enum Kind {
-		ORDER_RECEIVED, ORDER_CONFIRMED, ORDER_DISPATCHED, ORDER_CANCELLED, ORDER_EXPIRED
+		ORDER_RECEIVED, ORDER_CONFIRMED, ORDER_DISPATCHED, ORDER_CANCELLED, ORDER_EXPIRED, REFUND_COMPLETED
 	}
 
 	/**
 	 * What a notice may say about an order.
 	 *
 	 * @param paymentDueBy end of the payment hold (ONLINE/MANUAL awaiting payment), else null
-	 * @param refundAmount amount of an open refund request, else null
+	 * @param refundAmount the refund the notice is about (completed), or an open request (cancelled), else null
 	 */
 	public record OrderFacts(String orderNumber, String paymentMethod, BigDecimal total, Instant slotStart,
 			Instant slotEnd, @Nullable Instant paymentDueBy, @Nullable BigDecimal refundAmount) {
@@ -55,11 +55,20 @@ public final class OrderNotices {
 							: " Your refund of BDT " + amount(order.refundAmount()) + " is being processed.");
 			case ORDER_EXPIRED -> BRAND + "order " + order.orderNumber()
 					+ " was cancelled because payment was not completed in time.";
+			case REFUND_COMPLETED -> BRAND + "your refund of BDT " + amount(requireRefund(order)) + " for order "
+					+ order.orderNumber() + " has been sent. It may take a few days to reach your account.";
 		};
 		if (text.length() > MAX_LENGTH || !text.chars().allMatch(c -> c >= 0x20 && c < 0x7F)) {
 			throw new IllegalStateException("Notice is not a single ASCII SMS segment: " + kind);
 		}
 		return text;
+	}
+
+	private static BigDecimal requireRefund(OrderFacts order) {
+		if (order.refundAmount() == null) {
+			throw new IllegalStateException("A refund notice needs the refund amount");
+		}
+		return order.refundAmount();
 	}
 
 	private static String received(OrderFacts order) {

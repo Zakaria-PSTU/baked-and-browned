@@ -64,16 +64,21 @@ public class OutboxDispatcher {
 	}
 
 	private List<OutboxMessage> claim() {
+		// UPDATE ... RETURNING has no defined row order: deliver the batch in creation order, so an
+		// aggregate's events (e.g. "received" before "on its way") arrive in the order they happened.
 		return jdbc.query("""
-				UPDATE outbox_events
-				SET attempts = attempts + 1, next_attempt_at = now() + make_interval(secs => ?)
-				WHERE id IN (
-				    SELECT id FROM outbox_events
-				    WHERE processed_at IS NULL AND next_attempt_at <= now()
-				    ORDER BY next_attempt_at, id
-				    LIMIT ?
-				    FOR UPDATE SKIP LOCKED)
-				RETURNING id, aggregate_type, aggregate_id, event_type, payload::text AS payload, attempts""",
+				WITH claimed AS (
+				  UPDATE outbox_events
+				  SET attempts = attempts + 1, next_attempt_at = now() + make_interval(secs => ?)
+				  WHERE id IN (
+				      SELECT id FROM outbox_events
+				      WHERE processed_at IS NULL AND next_attempt_at <= now()
+				      ORDER BY next_attempt_at, id
+				      LIMIT ?
+				      FOR UPDATE SKIP LOCKED)
+				  RETURNING id, aggregate_type, aggregate_id, event_type, payload::text AS payload, attempts, created_at)
+				SELECT id, aggregate_type, aggregate_id, event_type, payload, attempts FROM claimed
+				ORDER BY created_at, id""",
 				(rs, row) -> new OutboxMessage(rs.getObject("id", UUID.class), rs.getString("aggregate_type"),
 						rs.getObject("aggregate_id", UUID.class), rs.getString("event_type"), rs.getString("payload"),
 						rs.getInt("attempts")),

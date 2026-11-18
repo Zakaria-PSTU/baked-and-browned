@@ -36,6 +36,22 @@ public final class PaymentDtos {
 
 	}
 
+	/**
+	 * Body of {@code adminRequestRefund}. {@code amount} defaults to everything not yet refunded;
+	 * a smaller amount is a partial refund.
+	 */
+	public record RefundRequest(@NotBlank @Size(min = 3, max = 500) String reason, @Nullable Money amount) {
+	}
+
+	/** Contract {@code RefundDecisionRequest}. */
+	public record RefundDecisionRequest(@NotNull PaymentVerificationRequest.Decision decision,
+			@NotBlank @Size(min = 3, max = 500) String note) {
+	}
+
+	/** Contract {@code RefundCompletionRequest}: the bank or wallet reference of the money sent back. */
+	public record RefundCompletionRequest(@NotBlank @Size(min = 3, max = 150) String externalReference) {
+	}
+
 	/** Contract {@code Refund}. */
 	public record Refund(UUID id, UUID paymentId, UUID orderId, Money amount, String currency, String status,
 			String requestReason, String requestedByType, @Nullable UUID decidedBy, @Nullable Instant decidedAt,
@@ -43,11 +59,12 @@ public final class PaymentDtos {
 			Instant createdAt) {
 	}
 
-	/** Contract {@code AdminPayment}. */
+	/** Contract {@code AdminPayment}; {@code refundedAmount} is the total of completed refunds (v1.2). */
 	public record AdminPayment(UUID id, UUID orderId, String orderNumber, String method, @Nullable String provider,
 			@Nullable String providerTransactionId, Money amount, String currency, String status,
 			@Nullable String failureReason, @Nullable UUID verifiedBy, @Nullable Instant verifiedAt,
-			@Nullable String verificationNote, @Nullable ManualPaymentSubmission latestSubmission, Instant createdAt) {
+			@Nullable String verificationNote, @Nullable ManualPaymentSubmission latestSubmission, Money refundedAmount,
+			Instant createdAt) {
 	}
 
 }

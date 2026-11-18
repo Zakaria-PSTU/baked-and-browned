@@ -56,6 +56,9 @@ class OrderNoticesTest {
 		assertThat(OrderNotices.text(Kind.ORDER_CANCELLED, facts("ONLINE", null, new BigDecimal("1310.00"))))
 			.isEqualTo("Baked & Browned: order BB-20261118-000123 has been cancelled. Your refund of BDT 1,310.00 "
 					+ "is being processed.");
+		assertThat(OrderNotices.text(Kind.REFUND_COMPLETED, facts("MANUAL", null, new BigDecimal("500.00"))))
+			.isEqualTo("Baked & Browned: your refund of BDT 500.00 for order BB-20261118-000123 has been sent. "
+					+ "It may take a few days to reach your account.");
 		assertThat(OrderNotices.text(Kind.ORDER_EXPIRED, facts("ONLINE", null, null))).isEqualTo(
 				"Baked & Browned: order BB-20261118-000123 was cancelled because payment was not completed in time.");
 	}

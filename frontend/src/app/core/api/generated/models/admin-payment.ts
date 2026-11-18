@@ -18,6 +18,11 @@ export interface AdminPayment {
   orderNumber: string;
   provider?: string | null;
   providerTransactionId?: string | null;
+
+  /**
+   * Total of completed refunds (v1.2).
+   */
+  refundedAmount?: Money;
   status: PaymentStatus;
   verificationNote?: string | null;
   verifiedAt?: string | null;
