@@ -30,8 +30,6 @@ public class OrderCancellationService {
 
 	public static final String CANCELLATION_WINDOW_CLOSED = "CANCELLATION_WINDOW_CLOSED";
 
-	static final String EVENT_ORDER_CANCELLED = "order.cancelled";
-
 	static final String DEFAULT_REFUND_REASON = "Order cancelled by the customer.";
 
 	private final JdbcTemplate jdbc;
@@ -87,7 +85,7 @@ public class OrderCancellationService {
 					ON CONFLICT DO NOTHING""", payment.id(), orderId, payment.amount(),
 					note == null ? DEFAULT_REFUND_REASON : note, customerId);
 		}
-		outbox.publish("order", orderId, EVENT_ORDER_CANCELLED, Map.of("orderId", orderId.toString()));
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.CANCELLED, Map.of("orderId", orderId.toString()));
 		return queries.detail(orderId, customerId, false);
 	}
 

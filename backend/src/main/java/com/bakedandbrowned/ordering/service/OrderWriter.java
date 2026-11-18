@@ -36,8 +36,6 @@ class OrderWriter {
 	/** ADR-0008: ONLINE and MANUAL orders hold their reservations for 15 minutes. */
 	static final Duration PAYMENT_HOLD = Duration.ofMinutes(15);
 
-	static final String EVENT_ORDER_PLACED = "order.placed";
-
 	private static final DateTimeFormatter ORDER_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
 	private final JdbcTemplate jdbc;
@@ -117,7 +115,7 @@ class OrderWriter {
 		jdbc.update("""
 				INSERT INTO order_status_history (order_id, from_status, to_status, actor_type, actor_user_id)
 				VALUES (?, NULL, ?::order_status, 'CUSTOMER', ?)""", orderId, status, userId);
-		outbox.publish("order", orderId, EVENT_ORDER_PLACED, Map.of("orderId", orderId.toString()));
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.PLACED, Map.of("orderId", orderId.toString()));
 		return orderId;
 	}
 

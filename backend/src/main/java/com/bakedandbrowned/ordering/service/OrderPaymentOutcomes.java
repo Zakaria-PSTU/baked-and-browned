@@ -24,8 +24,6 @@ import com.bakedandbrowned.ordering.service.OrderClosing.Actor;
 @Service
 public class OrderPaymentOutcomes {
 
-	static final String EVENT_ORDER_CONFIRMED = "order.confirmed";
-
 	private final JdbcTemplate jdbc;
 
 	private final OrderClosing closing;
@@ -79,7 +77,7 @@ public class OrderPaymentOutcomes {
 		jdbc.update("UPDATE slot_reservations SET status = 'CONFIRMED' WHERE order_id = ? AND status = 'HELD'",
 				orderId);
 		stock.confirm(orderId);
-		outbox.publish("order", orderId, EVENT_ORDER_CONFIRMED, Map.of("orderId", orderId.toString()));
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.CONFIRMED, Map.of("orderId", orderId.toString()));
 	}
 
 	/**
@@ -90,7 +88,7 @@ public class OrderPaymentOutcomes {
 	public void cancelUnpaid(UUID orderId, UUID adminId, String note) {
 		requireStatus(orderId, "PENDING_PAYMENT");
 		closing.close(orderId, "PENDING_PAYMENT", "CANCELLED", Actor.ADMIN, adminId, note);
-		outbox.publish("order", orderId, OrderCancellationService.EVENT_ORDER_CANCELLED,
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.CANCELLED,
 				Map.of("orderId", orderId.toString()));
 	}
 

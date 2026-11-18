@@ -30,8 +30,6 @@ import com.bakedandbrowned.ordering.service.OrderClosing.Actor;
 @EnableConfigurationProperties(HoldExpiryProperties.class)
 public class HoldExpiry {
 
-	static final String EVENT_ORDER_EXPIRED = "order.expired";
-
 	static final String REASON = "Payment was not completed within the hold period.";
 
 	/**
@@ -89,7 +87,7 @@ public class HoldExpiry {
 			return false;
 		}
 		closing.close(orderId, "PENDING_PAYMENT", "EXPIRED", Actor.SYSTEM, null, REASON);
-		outbox.publish("order", orderId, EVENT_ORDER_EXPIRED, Map.of("orderId", orderId.toString()));
+		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.EXPIRED, Map.of("orderId", orderId.toString()));
 		return true;
 	}
 
