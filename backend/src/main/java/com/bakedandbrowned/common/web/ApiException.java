@@ -21,6 +21,16 @@ public class ApiException extends RuntimeException {
 		this.code = code;
 	}
 
+	/** Missing, invalid or expired credentials (401). */
+	public static ApiException unauthorized(String code, String detail) {
+		return new ApiException(HttpStatus.UNAUTHORIZED, code, detail);
+	}
+
+	/** Authenticated but not allowed, or a failed CSRF check (403). */
+	public static ApiException forbidden(String code, String detail) {
+		return new ApiException(HttpStatus.FORBIDDEN, code, detail);
+	}
+
 	public static ApiException notFound(String code, String detail) {
 		return new ApiException(HttpStatus.NOT_FOUND, code, detail);
 	}

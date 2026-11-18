@@ -1,0 +1,5 @@
+# One-off "provision the first ADMIN" command (AdminProvisioningRunner): no web server; the
+# process runs Flyway, creates the admin and exits. Credentials come only from the environment.
+spring:
+  main:
+    web-application-type: none

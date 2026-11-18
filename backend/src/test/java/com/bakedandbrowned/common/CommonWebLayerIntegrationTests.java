@@ -1,6 +1,7 @@
 package com.bakedandbrowned.common;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,7 +30,7 @@ class CommonWebLayerIntegrationTests {
 
 	@Test
 	void unknownApiPathsAreProblemJsonWithTraceId() throws Exception {
-		mockMvc.perform(get("/api/v1/does-not-exist"))
+		mockMvc.perform(get("/api/v1/does-not-exist").with(jwt()))
 			.andExpect(status().isNotFound())
 			.andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
 			.andExpect(jsonPath("$.code").value("NOT_FOUND"))
@@ -37,8 +38,17 @@ class CommonWebLayerIntegrationTests {
 	}
 
 	@Test
+	void defaultDenyHidesUnknownPathsFromAnonymousCallers() throws Exception {
+		mockMvc.perform(get("/api/v1/does-not-exist"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+			.andExpect(jsonPath("$.traceId").value(Matchers.matchesPattern("^[0-9a-f]{32}$")));
+	}
+
+	@Test
 	void testOnlyProbeEndpointsAreNotPartOfTheApplication() throws Exception {
-		mockMvc.perform(get("/probe/conflict")).andExpect(status().isNotFound());
+		mockMvc.perform(get("/probe/conflict").with(jwt())).andExpect(status().isNotFound());
 	}
 
 	@Test

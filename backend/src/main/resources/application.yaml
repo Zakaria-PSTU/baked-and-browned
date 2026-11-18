@@ -20,6 +20,41 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+server:
+  # Honor X-Forwarded-For/-Proto only from trusted internal proxies (Tomcat RemoteIpValve), so
+  # request.getRemoteAddr() is the real client for rate limiting and cannot be spoofed directly.
+  forward-headers-strategy: native
+
+app:
+  security:
+    jwt:
+      issuer: https://api.bakedandbrowned.com.bd
+      audience: baked-and-browned-web
+      access-token-ttl: 15m
+      key-id: bb-access-1
+      # PKCS#8 PEM RSA key (>= 2048 bits), only from the environment or a secret store:
+      # APP_SECURITY_JWT_PRIVATE_KEY. Startup fails without it unless allow-ephemeral-key is true.
+      private-key:
+      allow-ephemeral-key: false
+    refresh-token-ttl: 14d
+    secure-cookies: true
+    # Exact Origin values accepted on /auth/refresh and /auth/logout. Set APP_SECURITY_ALLOWED_ORIGINS
+    # to the production origin; the default only fits local development (ng serve).
+    allowed-origins:
+      - http://localhost:4200
+  rate-limits:
+    policies:
+      # Per client IP.
+      login:
+        limit: 10
+        window: 5m
+      register:
+        limit: 5
+        window: 15m
+      refresh:
+        limit: 30
+        window: 5m
+
 logging:
   pattern:
     # Prefix each log line with the request's trace id (TraceIdFilter), matching problem+json traceId.
