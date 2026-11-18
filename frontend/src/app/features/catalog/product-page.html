@@ -1,0 +1,74 @@
+<p class="text-sm"><a routerLink="/" class="text-amber-800 underline">← Back to the menu</a></p>
+
+@if (notFound()) {
+  <section class="py-12 text-center">
+    <h1 class="text-2xl font-semibold tracking-tight">This product is not available</h1>
+    <p class="mt-3 text-stone-600">It may have sold out for the season or been renamed.</p>
+  </section>
+} @else if (product.error()) {
+  <p class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+    We could not load this product. Please try again in a moment.
+  </p>
+} @else if (product.hasValue()) {
+  @let p = product.value();
+  <article class="mt-6 grid gap-8 md:grid-cols-2">
+    @if (p.imageUrl) {
+      <img [src]="p.imageUrl" [alt]="p.name" class="w-full rounded-lg object-cover" />
+    } @else {
+      <div class="aspect-[4/3] w-full rounded-lg bg-amber-100" aria-hidden="true"></div>
+    }
+    <div>
+      <h1 class="text-3xl font-semibold tracking-tight">{{ p.name }}</h1>
+      <p class="mt-2 text-xl">{{ p.basePrice | bdt }}</p>
+      @if (p.description) {
+        <p class="mt-4 whitespace-pre-line text-stone-700">{{ p.description }}</p>
+      }
+      <p class="mt-4 text-sm text-stone-600">
+        Order at least {{ p.minLeadHours }} hours ahead.
+        @if (p.cancellationCutoffHours !== undefined) {
+          Free cancellation until {{ p.cancellationCutoffHours }} hours before delivery.
+        }
+      </p>
+
+      @for (g of p.customizationGroups; track g.id) {
+        <section class="mt-6">
+          <h2 class="font-medium">
+            {{ g.name || g.code }}
+            @if (g.required) {
+              <span class="text-sm font-normal text-stone-500">(required)</span>
+            }
+          </h2>
+          @if (g.selectionType === 'TEXT') {
+            <p class="text-sm text-stone-600">
+              Add a message of up to {{ g.textMaxLength }} characters.
+            </p>
+          } @else {
+            <p class="text-sm text-stone-600">
+              @if (g.selectionType === 'SINGLE') {
+                Choose one.
+              } @else {
+                Choose up to {{ g.maxSelections }}.
+              }
+            </p>
+            <ul class="mt-2 space-y-1 text-sm">
+              @for (o of g.options; track o.id) {
+                <li class="flex justify-between border-b border-stone-100 py-1">
+                  <span>{{ o.name }}</span>
+                  <span class="text-stone-600">
+                    {{ o.priceDelta > 0 ? '+ ' + (o.priceDelta | bdt) : 'Included' }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      }
+
+      <p class="mt-8 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        Online ordering opens soon.
+      </p>
+    </div>
+  </article>
+} @else {
+  <p class="mt-6 text-stone-600" aria-live="polite">Loading…</p>
+}

@@ -1,0 +1,58 @@
+<section class="mx-auto max-w-md">
+  <h1 class="text-2xl font-semibold tracking-tight">Log in</h1>
+  <p class="mt-1 text-sm text-stone-600">Use your mobile number or email.</p>
+
+  <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    @if (error(); as message) {
+      <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{{ message }}</p>
+    }
+
+    <div>
+      <label for="identifier" class="block text-sm font-medium">Mobile number or email</label>
+      <input
+        id="identifier"
+        type="text"
+        formControlName="identifier"
+        autocomplete="username"
+        placeholder="01712345678 or you@example.com"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="form.controls.identifier.invalid && form.controls.identifier.touched"
+        aria-describedby="identifier-error"
+      />
+      @if (form.controls.identifier.invalid && form.controls.identifier.touched) {
+        <p id="identifier-error" class="mt-1 text-sm text-red-700">
+          Enter your mobile number or email.
+        </p>
+      }
+    </div>
+
+    <div>
+      <label for="password" class="block text-sm font-medium">Password</label>
+      <input
+        id="password"
+        type="password"
+        formControlName="password"
+        autocomplete="current-password"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
+        aria-describedby="password-error"
+      />
+      @if (form.controls.password.invalid && form.controls.password.touched) {
+        <p id="password-error" class="mt-1 text-sm text-red-700">Enter your password.</p>
+      }
+    </div>
+
+    <button
+      type="submit"
+      class="w-full rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-60"
+      [disabled]="submitting()"
+    >
+      {{ submitting() ? 'Logging in…' : 'Log in' }}
+    </button>
+  </form>
+
+  <p class="mt-6 text-sm text-stone-600">
+    New here?
+    <a routerLink="/register" class="font-medium text-amber-800 underline">Create an account</a>
+  </p>
+</section>

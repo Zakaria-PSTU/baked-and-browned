@@ -1,0 +1,114 @@
+<section class="mx-auto max-w-md">
+  <h1 class="text-2xl font-semibold tracking-tight">Create an account</h1>
+  <p class="mt-1 text-sm text-stone-600">You need an account to order. We deliver within Dhaka.</p>
+
+  <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    @if (error(); as message) {
+      <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{{ message }}</p>
+    }
+
+    <div>
+      <label for="fullName" class="block text-sm font-medium">Full name</label>
+      <input
+        id="fullName"
+        type="text"
+        formControlName="fullName"
+        autocomplete="name"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="showError('fullName')"
+        aria-describedby="fullName-error"
+      />
+      @if (showError('fullName')) {
+        <p id="fullName-error" class="mt-1 text-sm text-red-700">
+          Enter your name (2–150 characters).
+        </p>
+      }
+    </div>
+
+    <div>
+      <label for="phone" class="block text-sm font-medium">Mobile number</label>
+      <input
+        id="phone"
+        type="tel"
+        formControlName="phone"
+        autocomplete="tel"
+        placeholder="01712345678"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="showError('phone')"
+        aria-describedby="phone-error"
+      />
+      @if (showError('phone')) {
+        <p id="phone-error" class="mt-1 text-sm text-red-700">
+          Enter a Bangladeshi mobile number, for example 01712345678.
+        </p>
+      }
+    </div>
+
+    <div>
+      <label for="email" class="block text-sm font-medium">
+        Email <span class="font-normal text-stone-500">(optional)</span>
+      </label>
+      <input
+        id="email"
+        type="email"
+        formControlName="email"
+        autocomplete="email"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="showError('email')"
+        aria-describedby="email-error"
+      />
+      @if (showError('email')) {
+        <p id="email-error" class="mt-1 text-sm text-red-700">Enter a valid email address.</p>
+      }
+    </div>
+
+    <div>
+      <label for="password" class="block text-sm font-medium">Password</label>
+      <input
+        id="password"
+        type="password"
+        formControlName="password"
+        autocomplete="new-password"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="showError('password')"
+        aria-describedby="password-help"
+      />
+      <p id="password-help" class="mt-1 text-sm" [class.text-red-700]="showError('password')">
+        At least {{ passwordMin }} characters. A short phrase is easiest to remember.
+      </p>
+    </div>
+
+    <div>
+      <label for="confirmPassword" class="block text-sm font-medium">Confirm password</label>
+      <input
+        id="confirmPassword"
+        type="password"
+        formControlName="confirmPassword"
+        autocomplete="new-password"
+        class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+        [attr.aria-invalid]="
+          form.hasError('passwordsDiffer') && form.controls.confirmPassword.touched
+        "
+        aria-describedby="confirmPassword-error"
+      />
+      @if (form.hasError('passwordsDiffer') && form.controls.confirmPassword.touched) {
+        <p id="confirmPassword-error" class="mt-1 text-sm text-red-700">
+          The passwords do not match.
+        </p>
+      }
+    </div>
+
+    <button
+      type="submit"
+      class="w-full rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-60"
+      [disabled]="submitting()"
+    >
+      {{ submitting() ? 'Creating account…' : 'Create account' }}
+    </button>
+  </form>
+
+  <p class="mt-6 text-sm text-stone-600">
+    Already have an account?
+    <a routerLink="/login" class="font-medium text-amber-800 underline">Log in</a>
+  </p>
+</section>
