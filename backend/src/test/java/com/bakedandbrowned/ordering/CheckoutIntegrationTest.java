@@ -33,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
  * chocolate each) and cookies (1 unit, no recipe), an active Dhanmondi zone (fee 60.00) and a slot
  * two days ahead with 10 units.
  */
-abstract class CheckoutIntegrationTest extends InventoryIntegrationTest {
+public abstract class CheckoutIntegrationTest extends InventoryIntegrationTest {
 
 	@Autowired
 	protected JsonMapper json;
@@ -55,7 +55,7 @@ abstract class CheckoutIntegrationTest extends InventoryIntegrationTest {
 	protected Instant slotStart;
 
 	@BeforeEach
-	void menu() {
+	protected void menu() {
 		// No foreign key ties events to orders, so they are not truncated with them.
 		jdbc.execute("TRUNCATE outbox_events");
 		UUID brownies = category("Brownies", "brownies", 1, true);

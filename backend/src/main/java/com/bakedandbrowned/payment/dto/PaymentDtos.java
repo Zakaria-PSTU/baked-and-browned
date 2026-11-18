@@ -1,0 +1,46 @@
+package com.bakedandbrowned.payment.dto;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import org.jspecify.annotations.Nullable;
+
+import com.bakedandbrowned.common.value.Money;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/** Manual payment submission and ADMIN payment views (contract tags Payments and Admin). */
+public final class PaymentDtos {
+
+	private PaymentDtos() {
+	}
+
+	/** Contract {@code ManualPaymentProvider}. */
+	public enum ManualPaymentProvider {
+		BANK_TRANSFER, BKASH, NAGAD, ROCKET, OTHER
+	}
+
+	/** Contract {@code ManualPaymentSubmission}: no storage key, file hash or submitter. */
+	public record ManualPaymentSubmission(UUID id, UUID paymentId, String provider, String transactionReference,
+			String status, boolean hasProof, Instant createdAt) {
+	}
+
+	/** Contract {@code PaymentVerificationRequest}. */
+	public record PaymentVerificationRequest(@NotNull Decision decision, @NotBlank @Size(min = 3, max = 500) String note) {
+
+		public enum Decision {
+			APPROVE, REJECT
+		}
+
+	}
+
+	/** Contract {@code AdminPayment}. */
+	public record AdminPayment(UUID id, UUID orderId, String orderNumber, String method, @Nullable String provider,
+			@Nullable String providerTransactionId, Money amount, String currency, String status,
+			@Nullable String failureReason, @Nullable UUID verifiedBy, @Nullable Instant verifiedAt,
+			@Nullable String verificationNote, @Nullable ManualPaymentSubmission latestSubmission, Instant createdAt) {
+	}
+
+}

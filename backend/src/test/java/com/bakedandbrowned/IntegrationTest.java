@@ -20,7 +20,8 @@ import org.springframework.test.context.ActiveProfiles;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-@SpringBootTest(properties = { "app.security.jwt.allow-ephemeral-key=true", "app.scheduling.enabled=false" })
+@SpringBootTest(properties = { "app.security.jwt.allow-ephemeral-key=true", "app.scheduling.enabled=false",
+		"app.payments.proof-storage.directory=target/test-payment-proofs" })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
