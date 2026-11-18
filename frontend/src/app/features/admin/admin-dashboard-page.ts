@@ -12,6 +12,8 @@ interface Tile {
   readonly attention: boolean;
   /** Where the queue is worked, if it has a screen yet. */
   readonly link?: string;
+  /** Query parameters for `link`, e.g. a status filter. */
+  readonly query?: Record<string, string>;
 }
 
 /**
@@ -50,8 +52,19 @@ export class AdminDashboardPage {
     const reconciliation = s.openReconciliationCases ?? 0;
     const lowStock = s.lowStockIngredients ?? 0;
     return [
-      tile('To prepare', String(s.pendingOrders), 'Confirmed, not started', false),
-      tile('Preparing', String(s.preparingOrders), 'In the kitchen', false),
+      tile(
+        'To prepare',
+        String(s.pendingOrders),
+        'Confirmed, not started',
+        false,
+        '/admin/orders',
+        {
+          status: 'CONFIRMED',
+        },
+      ),
+      tile('Preparing', String(s.preparingOrders), 'In the kitchen', false, '/admin/orders', {
+        status: 'PREPARING',
+      }),
       tile(
         'Payments to verify',
         String(verification),
@@ -69,6 +82,13 @@ export class AdminDashboardPage {
   }
 }
 
-function tile(label: string, value: string, hint: string, attention: boolean, link?: string): Tile {
-  return { label, value, hint, attention, link };
+function tile(
+  label: string,
+  value: string,
+  hint: string,
+  attention: boolean,
+  link?: string,
+  query?: Record<string, string>,
+): Tile {
+  return { label, value, hint, attention, link, query };
 }

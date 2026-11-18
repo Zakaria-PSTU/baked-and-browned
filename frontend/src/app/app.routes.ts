@@ -57,6 +57,20 @@ export const routes: Routes = [
     loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
   },
   {
+    path: 'admin/orders',
+    pathMatch: 'full',
+    title: 'Orders · Baked & Browned',
+    canMatch: [requireAdmin],
+    loadComponent: () =>
+      import('./features/admin/admin-orders-page').then((m) => m.AdminOrdersPage),
+  },
+  {
+    path: 'admin/orders/:orderId',
+    title: 'Order · Baked & Browned',
+    canMatch: [requireAdmin],
+    loadComponent: () => import('./features/admin/admin-order-page').then((m) => m.AdminOrderPage),
+  },
+  {
     path: 'admin/payments',
     title: 'Payments to verify · Baked & Browned',
     canMatch: [requireAdmin],

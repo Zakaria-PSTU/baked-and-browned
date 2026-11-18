@@ -51,7 +51,11 @@ describe('AdminDashboardPage', () => {
     expect(flagged).toEqual(['Payments to verify', 'Low stock']);
     // Only queues with a screen link to it.
     const links = [...el.querySelectorAll('li a')].map((a) => a.getAttribute('href'));
-    expect(links).toEqual(['/admin/payments']);
+    expect(links).toEqual([
+      '/admin/orders?status=CONFIRMED',
+      '/admin/orders?status=PREPARING',
+      '/admin/payments',
+    ]);
   });
 
   it('treats the optional figures as zero when absent', async () => {
