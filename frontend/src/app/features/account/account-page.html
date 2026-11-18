@@ -1,0 +1,26 @@
+<section class="mx-auto max-w-md">
+  <h1 class="text-2xl font-semibold tracking-tight">Your account</h1>
+
+  @if (error(); as message) {
+    <p class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+      {{ message }}
+    </p>
+  }
+
+  @if (user(); as u) {
+    <dl class="mt-6 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+      <div class="flex justify-between px-4 py-3">
+        <dt class="text-sm text-stone-600">Name</dt>
+        <dd class="text-sm font-medium">{{ u.fullName }}</dd>
+      </div>
+      <div class="flex justify-between px-4 py-3">
+        <dt class="text-sm text-stone-600">Mobile</dt>
+        <dd class="text-sm font-medium">{{ u.phone }}</dd>
+      </div>
+      <div class="flex justify-between px-4 py-3">
+        <dt class="text-sm text-stone-600">Email</dt>
+        <dd class="text-sm font-medium">{{ u.email || 'Not set' }}</dd>
+      </div>
+    </dl>
+  }
+</section>
