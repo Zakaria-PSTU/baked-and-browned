@@ -17,6 +17,9 @@ public final class OrderEvents {
 	/** Cancelled by the customer, or by an ADMIN (including a rejected manual payment). */
 	public static final String CANCELLED = "order.cancelled";
 
+	/** An ADMIN sent the order out: READY → OUT_FOR_DELIVERY. */
+	public static final String DISPATCHED = "order.dispatched";
+
 	/** Payment hold ran out. */
 	public static final String EXPIRED = "order.expired";
 

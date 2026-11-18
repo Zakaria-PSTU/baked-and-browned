@@ -40,6 +40,9 @@ public class OrderQueryService {
 	/** Upper bound on the customer's order list (the contract returns a plain array). */
 	static final int MAX_LISTED = 200;
 
+	/** Upper bound on the ADMIN order list (also a plain array in the contract). */
+	static final int MAX_ADMIN_LISTED = 500;
+
 	private static final String ORDER_COLUMNS = """
 			o.id, o.order_number, o.status::text AS status, o.subtotal, o.delivery_fee, o.discount_amount,
 			o.total_amount, o.currency, o.payment_method::text AS payment_method, o.created_at,
@@ -57,6 +60,24 @@ public class OrderQueryService {
 	public List<OrderSummary> mine(UUID userId) {
 		return jdbc.query("SELECT " + ORDER_COLUMNS + " FROM orders o WHERE o.user_id = ? ORDER BY o.created_at DESC, o.id DESC LIMIT ?",
 				(rs, row) -> summary(rs), userId, MAX_LISTED);
+	}
+
+	/** ADMIN list: every customer's orders, newest first, optionally one status, at most {@link #MAX_ADMIN_LISTED}. */
+	public List<OrderSummary> all(@Nullable String status) {
+		return status == null
+				? jdbc.query("SELECT " + ORDER_COLUMNS + " FROM orders o ORDER BY o.created_at DESC, o.id DESC LIMIT ?",
+						(rs, row) -> summary(rs), MAX_ADMIN_LISTED)
+				: jdbc.query("SELECT " + ORDER_COLUMNS
+						+ " FROM orders o WHERE o.status = ?::order_status ORDER BY o.created_at DESC, o.id DESC LIMIT ?",
+						(rs, row) -> summary(rs), status, MAX_ADMIN_LISTED);
+	}
+
+	/** One order's summary, for any viewer the caller has already authorized. */
+	public OrderSummary summary(UUID orderId) {
+		return jdbc.query("SELECT " + ORDER_COLUMNS + " FROM orders o WHERE o.id = ?", (rs, row) -> summary(rs), orderId)
+			.stream()
+			.findFirst()
+			.orElseThrow(() -> ApiException.notFound(ORDER_NOT_FOUND, "Order not found."));
 	}
 
 	/** The detail of an order the viewer may see. */

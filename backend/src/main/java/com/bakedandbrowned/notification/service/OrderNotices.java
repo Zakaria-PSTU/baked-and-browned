@@ -31,7 +31,7 @@ public final class OrderNotices {
 
 	/** Matches the {@code notifications.kind} check constraint. */
 	public enum Kind {
-		ORDER_RECEIVED, ORDER_CONFIRMED, ORDER_CANCELLED, ORDER_EXPIRED
+		ORDER_RECEIVED, ORDER_CONFIRMED, ORDER_DISPATCHED, ORDER_CANCELLED, ORDER_EXPIRED
 	}
 
 	/**
@@ -49,6 +49,7 @@ public final class OrderNotices {
 			case ORDER_RECEIVED -> received(order);
 			case ORDER_CONFIRMED -> BRAND + "payment received. Order " + order.orderNumber()
 					+ " is confirmed for delivery " + slot(order) + ".";
+			case ORDER_DISPATCHED -> BRAND + "order " + order.orderNumber() + " is on its way. Delivery " + slot(order) + ".";
 			case ORDER_CANCELLED -> BRAND + "order " + order.orderNumber() + " has been cancelled."
 					+ (order.refundAmount() == null ? ""
 							: " Your refund of BDT " + amount(order.refundAmount()) + " is being processed.");

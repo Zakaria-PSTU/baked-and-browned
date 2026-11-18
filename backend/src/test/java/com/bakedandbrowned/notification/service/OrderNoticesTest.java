@@ -49,6 +49,8 @@ class OrderNoticesTest {
 		assertThat(OrderNotices.text(Kind.ORDER_CONFIRMED, facts("MANUAL", null, null))).isEqualTo(
 				"Baked & Browned: payment received. Order BB-20261118-000123 is confirmed for delivery Fri 20 Nov, "
 						+ "4:00 PM-6:00 PM.");
+		assertThat(OrderNotices.text(Kind.ORDER_DISPATCHED, facts("COD", null, null))).isEqualTo(
+				"Baked & Browned: order BB-20261118-000123 is on its way. Delivery Fri 20 Nov, 4:00 PM-6:00 PM.");
 		assertThat(OrderNotices.text(Kind.ORDER_CANCELLED, facts("COD", null, null)))
 			.isEqualTo("Baked & Browned: order BB-20261118-000123 has been cancelled.");
 		assertThat(OrderNotices.text(Kind.ORDER_CANCELLED, facts("ONLINE", null, new BigDecimal("1310.00"))))

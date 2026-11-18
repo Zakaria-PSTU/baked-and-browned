@@ -78,13 +78,8 @@ public class OrderCancellationService {
 
 		String note = reason == null || reason.isBlank() ? null : reason.strip();
 		CurrentPayment payment = closing.close(orderId, status, "CANCELLED", Actor.CUSTOMER, customerId, note);
-		if ("SUCCEEDED".equals(payment.status()) && payment.amount().signum() > 0) {
-			jdbc.update("""
-					INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type, requested_by)
-					VALUES (?, ?, ?, ?, 'CUSTOMER', ?)
-					ON CONFLICT DO NOTHING""", payment.id(), orderId, payment.amount(),
-					note == null ? DEFAULT_REFUND_REASON : note, customerId);
-		}
+		closing.requestRefundIfPaid(orderId, payment, Actor.CUSTOMER, customerId,
+				note == null ? DEFAULT_REFUND_REASON : note);
 		outbox.publish(OrderEvents.AGGREGATE, orderId, OrderEvents.CANCELLED, Map.of("orderId", orderId.toString()));
 		return queries.detail(orderId, customerId, false);
 	}
