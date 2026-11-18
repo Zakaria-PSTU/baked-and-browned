@@ -19,6 +19,11 @@ spring:
           time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  task:
+    scheduling:
+      pool:
+        # Outbox dispatch and housekeeping must not wait behind each other.
+        size: 2
 
 server:
   # Honor X-Forwarded-For/-Proto only from trusted internal proxies (Tomcat RemoteIpValve), so
@@ -37,11 +42,27 @@ app:
       private-key:
       allow-ephemeral-key: false
     refresh-token-ttl: 14d
+    # Expired families are deleted this long after their last token expired (RefreshTokenCleanup).
+    refresh-token-retention: 7d
+    refresh-token-cleanup-cron: "0 17 * * * *"
     secure-cookies: true
     # Exact Origin values accepted on /auth/refresh and /auth/logout. Set APP_SECURITY_ALLOWED_ORIGINS
     # to the production origin; the default only fits local development (ng serve).
     allowed-origins:
       - http://localhost:4200
+  scheduling:
+    # Background jobs (SchedulingConfig). Integration tests turn this off and run jobs directly.
+    enabled: true
+  outbox:
+    poll-interval: PT5S
+    batch-size: 50
+    lease: 5m
+    initial-backoff: 30s
+    max-backoff: 1h
+  payments:
+    fake:
+      # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
+      checkout-base-url: http://localhost:4200/dev/fake-gateway
   rate-limits:
     policies:
       # Per client IP.

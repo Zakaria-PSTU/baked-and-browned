@@ -106,3 +106,15 @@ ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@ex
 ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true \
 java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
+
+## Payments port, outbox and scheduled jobs (Phase 1E)
+
+- `payment.gateway.PaymentGateway` is the provider-neutral port (ADR-0012). The only adapter so far is
+  `FakePaymentGateway`, registered under the `dev` and `test` profiles. It refuses to start if `prod`
+  is also active. New adapters must pass `PaymentGatewayContract` (test sources).
+- `common.outbox`: call `OutboxPublisher.publish(...)` inside the business transaction. An
+  `OutboxHandler` per event type delivers it after commit, at least once (handlers must be
+  idempotent by event id), with exponential backoff (`app.outbox.*`).
+- Scheduled jobs (`app.scheduling.enabled`, default on): outbox dispatch every 5 s, and hourly
+  deletion of refresh-token families that expired more than 7 days ago. The hold-expiry job comes
+  with orders in Phase 2.

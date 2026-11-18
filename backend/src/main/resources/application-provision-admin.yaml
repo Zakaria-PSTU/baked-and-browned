@@ -3,3 +3,7 @@
 spring:
   main:
     web-application-type: none
+app:
+  scheduling:
+    # Background jobs would keep the JVM alive; this command must exit when done.
+    enabled: false
