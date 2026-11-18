@@ -643,6 +643,22 @@ CREATE TABLE option_ingredients (
 CREATE INDEX idx_option_ingredients_ingredient ON option_ingredients(ingredient_id);
 ```
 
+## V11 — disallowed combinations (`V11__disallowed_combinations.sql`)
+ADR-0020, Phase 4B: per product, pairs of options that cannot be chosen together.
+```sql
+-- Custom cakes: per product, pairs of options that cannot be chosen together. A pair is stored once
+-- (option_a sorts before option_b); the service keeps both options allowed for the product, and
+-- drops a pair when its product's customizations no longer allow one of them.
+CREATE TABLE product_disallowed_option_pairs (
+ product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+ option_a UUID NOT NULL REFERENCES customization_options(id),
+ option_b UUID NOT NULL REFERENCES customization_options(id),
+ PRIMARY KEY (product_id, option_a, option_b),
+ CHECK (option_a < option_b)
+);
+CREATE INDEX idx_disallowed_pairs_option_b ON product_disallowed_option_pairs(option_b);
+```
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.
@@ -659,7 +675,7 @@ CREATE INDEX idx_option_ingredients_ingredient ON option_ingredients(ingredient_
 
 ## Deferred migrations
 1. `ingredient_lots`, expiry and wastage ledger.
-2. Disallowed customization combinations (custom-cake phase, 4B). Option-level ingredients arrived in V10.
+2. (Done: option-level ingredients in V10, disallowed combinations in V11.)
 3. Additional reporting indexes once query patterns are measured.
 
 ## Example atomic reservations

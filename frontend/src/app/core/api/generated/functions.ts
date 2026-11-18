@@ -67,6 +67,10 @@ export type { AdminUpdateProduct$Params as AdminUpdateProduct$Params } from './f
 export { adminUpdateProduct as adminUpdateProduct } from './fn/admin/admin-update-product';
 export type { AdminSetProductCustomizations$Params as AdminSetProductCustomizations$Params } from './fn/admin/admin-set-product-customizations';
 export { adminSetProductCustomizations as adminSetProductCustomizations } from './fn/admin/admin-set-product-customizations';
+export type { AdminGetDisallowedCombinations$Params as AdminGetDisallowedCombinations$Params } from './fn/admin/admin-get-disallowed-combinations';
+export { adminGetDisallowedCombinations as adminGetDisallowedCombinations } from './fn/admin/admin-get-disallowed-combinations';
+export type { AdminSetDisallowedCombinations$Params as AdminSetDisallowedCombinations$Params } from './fn/admin/admin-set-disallowed-combinations';
+export { adminSetDisallowedCombinations as adminSetDisallowedCombinations } from './fn/admin/admin-set-disallowed-combinations';
 export type { AdminGetProductRecipe$Params as AdminGetProductRecipe$Params } from './fn/admin/admin-get-product-recipe';
 export { adminGetProductRecipe as adminGetProductRecipe } from './fn/admin/admin-get-product-recipe';
 export type { AdminSetProductRecipe$Params as AdminSetProductRecipe$Params } from './fn/admin/admin-set-product-recipe';

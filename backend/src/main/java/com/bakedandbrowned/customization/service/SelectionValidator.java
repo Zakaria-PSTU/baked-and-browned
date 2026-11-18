@@ -27,7 +27,8 @@ import com.bakedandbrowned.customization.service.CustomizationRules.OptionRule;
  * <li>required: between {@code lower} and {@code maxSelections} selections;</li>
  * <li>optional: zero, or between {@code lower} and {@code maxSelections}.</li>
  * </ul>
- * A TEXT group counts one selection when its message is non-blank.
+ * A TEXT group counts one selection when its message is non-blank. Two chosen options that form a
+ * pair the product disallows (ADR-0020) are rejected, naming both.
  */
 public final class SelectionValidator {
 
@@ -44,6 +45,8 @@ public final class SelectionValidator {
 	public static final String TEXT_INVALID = "TEXT_INVALID";
 
 	public static final String SELECTION_COUNT = "SELECTION_COUNT";
+
+	public static final String DISALLOWED_COMBINATION = "DISALLOWED_COMBINATION";
 
 	private SelectionValidator() {
 	}
@@ -79,6 +82,13 @@ public final class SelectionValidator {
 			}
 			if (!group.allowedOptions().get(optionId).active()) {
 				throw fail(OPTION_INACTIVE, "An option in \"" + group.name() + "\" is no longer available.");
+			}
+		}
+
+		for (CustomizationRules.OptionPair pair : rules.disallowedPairs()) {
+			if (selected.contains(pair.first()) && selected.contains(pair.second())) {
+				throw fail(DISALLOWED_COMBINATION, "\"" + nameOf(groupOfOption, pair.first()) + "\" and \""
+						+ nameOf(groupOfOption, pair.second()) + "\" cannot be chosen together.");
 			}
 		}
 
@@ -128,6 +138,10 @@ public final class SelectionValidator {
 			}
 		}
 		return new ValidatedCustomization(choices, total, extraUnits, strictest);
+	}
+
+	private static String nameOf(Map<UUID, GroupRule> groupOfOption, UUID optionId) {
+		return groupOfOption.get(optionId).allowedOptions().get(optionId).name();
 	}
 
 	/** NFC-normalized and stripped; blank means "no message". */

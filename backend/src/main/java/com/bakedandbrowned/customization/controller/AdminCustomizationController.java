@@ -22,6 +22,7 @@ import com.bakedandbrowned.catalog.service.ProductCatalog;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.AdminGroupResponse;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.AdminOptionResponse;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.AssignmentWrite;
+import com.bakedandbrowned.customization.dto.CustomizationDtos.DisallowedCombination;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.GroupWrite;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.OptionWrite;
 import com.bakedandbrowned.customization.service.CustomizationAdminService;
@@ -29,7 +30,10 @@ import com.bakedandbrowned.customization.service.ProductCustomizationService;
 
 import jakarta.validation.Valid;
 
-/** Contract tag {@code Admin}: customization groups, options and product assignments. ADMIN only. */
+/**
+ * Contract tag {@code Admin}: customization groups, options, product assignments and disallowed
+ * combinations. ADMIN only.
+ */
 @RestController
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasRole('ADMIN')")
@@ -82,6 +86,17 @@ public class AdminCustomizationController {
 			@RequestBody List<@Valid AssignmentWrite> body) {
 		assignments.replaceAssignments(actor(jwt), id, body);
 		return catalog.view(id);
+	}
+
+	@GetMapping("/products/{productId}/disallowed-combinations")
+	List<DisallowedCombination> disallowedCombinations(@PathVariable("productId") UUID id) {
+		return assignments.disallowedCombinations(id);
+	}
+
+	@PutMapping("/products/{productId}/disallowed-combinations")
+	List<DisallowedCombination> setDisallowedCombinations(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable("productId") UUID id, @RequestBody List<@Valid DisallowedCombination> body) {
+		return assignments.replaceDisallowedCombinations(actor(jwt), id, body);
 	}
 
 	private static UUID actor(Jwt jwt) {

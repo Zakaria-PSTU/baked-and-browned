@@ -68,7 +68,10 @@ public class ProductAdminService {
 				PageRequest.of(page, size, CatalogService.PRODUCT_ORDER));
 		Map<UUID, List<GroupView>> groups = customizations
 			.forProducts(found.getContent().stream().map(Product::getId).toList());
-		return PageResponse.of(found, p -> AdminProductResponse.from(p, groups.getOrDefault(p.getId(), List.of())));
+		Map<UUID, List<List<UUID>>> disallowed = customizations
+			.disallowedCombinations(found.getContent().stream().map(Product::getId).toList());
+		return PageResponse.of(found, p -> AdminProductResponse.from(p, groups.getOrDefault(p.getId(), List.of()),
+				disallowed.getOrDefault(p.getId(), List.of())));
 	}
 
 	@Transactional(readOnly = true)
@@ -145,7 +148,8 @@ public class ProductAdminService {
 	}
 
 	private AdminProductResponse view(Product product) {
-		return AdminProductResponse.from(product, customizations.forProduct(product.getId()));
+		return AdminProductResponse.from(product, customizations.forProduct(product.getId()),
+				customizations.disallowedCombinations(product.getId()));
 	}
 
 	private static ApiException slugTaken() {

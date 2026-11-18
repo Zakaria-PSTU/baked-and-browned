@@ -21,7 +21,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
   - required = true → selections must be between `max(min_selections, 1)` and `max_selections`.
   - required = false → zero selections, or between `max(min_selections, 1)` and `max_selections`.
 - Each selectable option must be explicitly allowed for the chosen product, be active, and belong to the stated group.
-- Validate minimum/maximum selections, duplicates, inactive options and text length. Disallowed combinations are validated once modeled (deferred to the custom-cake phase).
+- Validate minimum/maximum selections, duplicates, inactive options and text length, and that no two chosen options form a pair the product disallows (ADR-0020).
 - A TEXT group holds one customer message, maximum 250 characters in the database; a product may set a stricter `text_max_length` (e.g. 50), which the server enforces.
 - Never render messages as raw HTML (web, admin views and notifications). Snapshot names, text and price deltas on order items.
 

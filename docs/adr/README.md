@@ -23,3 +23,4 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0017](0017-refund-review-and-partial-refunds.md) | Second-approver refund review and partial refunds | Accepted | 2026-11-18 |
 | [0018](0018-sslcommerz-adapter.md) | SSLCommerz adapter from the public v4 docs | Proposed | 2026-11-18 |
 | [0019](0019-option-costs.md) | Customization options carry kitchen costs | Accepted | 2026-11-18 |
+| [0020](0020-disallowed-combinations.md) | Disallowed option combinations per product | Accepted | 2026-11-18 |

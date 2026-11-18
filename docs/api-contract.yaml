@@ -617,6 +617,53 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products/{productId}/disallowed-combinations:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetDisallowedCombinations
+      summary: Pairs of this product's options that cannot be chosen together (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      responses:
+        '200':
+          description: Disallowed combinations, including pairs with an inactive option
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DisallowedCombination'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetDisallowedCombinations
+      description: |
+        Replaces the product's disallowed combinations (an empty list removes them).
+        Each names two different options the product currently allows; the same pair
+        twice, in either order, is 422. Replacing the product's customizations later
+        drops pairs whose options it no longer allows.
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/DisallowedCombination'}
+      responses:
+        '200':
+          description: Updated disallowed combinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DisallowedCombination'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/products/{productId}/ingredients:
     get:
       tags: [Admin]
@@ -1542,7 +1589,7 @@ components:
         textMaxLength: {type: integer, minimum: 1, maximum: 250, nullable: true}
     Product:
       type: object
-      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups]
+      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups, disallowedCombinations]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         name: {type: string}
@@ -1557,6 +1604,20 @@ components:
         customizationGroups:
           type: array
           items: {$ref: '#/components/schemas/CustomizationGroup'}
+        disallowedCombinations:
+          type: array
+          description: Pairs of offered options that cannot be chosen together; a cart choosing both is rejected (422 DISALLOWED_COMBINATION) (v1.2).
+          items: {$ref: '#/components/schemas/DisallowedCombination'}
+    DisallowedCombination:
+      type: object
+      required: [optionIds]
+      properties:
+        optionIds:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Two different options the product offers; order carries no meaning.
+          items: {$ref: '#/components/schemas/Uuid'}
     ProductPage:
       type: object
       required: [content, page, size, totalElements]

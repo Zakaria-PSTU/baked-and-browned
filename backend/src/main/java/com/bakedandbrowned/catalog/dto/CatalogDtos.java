@@ -93,15 +93,25 @@ public final class CatalogDtos {
 
 	}
 
+	/** Contract {@code DisallowedCombination}: two options that cannot be chosen together (ADR-0020). */
+	public record DisallowedCombinationResponse(List<UUID> optionIds) {
+
+		static List<DisallowedCombinationResponse> from(List<List<UUID>> pairs) {
+			return pairs.stream().map(DisallowedCombinationResponse::new).toList();
+		}
+
+	}
+
 	/** Contract {@code Product} (public). */
 	public record ProductResponse(UUID id, String name, String slug, UUID categoryId, @Nullable String description,
 			@Nullable String imageUrl, Money basePrice, String currency, int minLeadHours, int cancellationCutoffHours,
-			List<CustomizationGroupResponse> customizationGroups) {
+			List<CustomizationGroupResponse> customizationGroups,
+			List<DisallowedCombinationResponse> disallowedCombinations) {
 
-		public static ProductResponse from(Product p, List<GroupView> groups) {
+		public static ProductResponse from(Product p, List<GroupView> groups, List<List<UUID>> disallowed) {
 			return new ProductResponse(p.getId(), p.getName(), p.getSlug(), p.getCategory().getId(), p.getDescription(),
 					p.getImageUrl(), p.getBasePrice(), "BDT", p.getMinLeadHours(), p.getCancellationCutoffHours(),
-					CustomizationGroupResponse.from(groups));
+					CustomizationGroupResponse.from(groups), DisallowedCombinationResponse.from(disallowed));
 		}
 
 	}
@@ -109,13 +119,15 @@ public final class CatalogDtos {
 	/** Contract {@code AdminProduct}. */
 	public record AdminProductResponse(UUID id, String name, String slug, UUID categoryId, @Nullable String description,
 			@Nullable String imageUrl, Money basePrice, String currency, int minLeadHours, int cancellationCutoffHours,
-			List<CustomizationGroupResponse> customizationGroups, ProductStatus status, int productionUnits,
+			List<CustomizationGroupResponse> customizationGroups,
+			List<DisallowedCombinationResponse> disallowedCombinations, ProductStatus status, int productionUnits,
 			Instant createdAt, Instant updatedAt) {
 
-		public static AdminProductResponse from(Product p, List<GroupView> groups) {
+		public static AdminProductResponse from(Product p, List<GroupView> groups, List<List<UUID>> disallowed) {
 			return new AdminProductResponse(p.getId(), p.getName(), p.getSlug(), p.getCategory().getId(),
 					p.getDescription(), p.getImageUrl(), p.getBasePrice(), "BDT", p.getMinLeadHours(),
-					p.getCancellationCutoffHours(), CustomizationGroupResponse.from(groups), p.getStatus(),
+					p.getCancellationCutoffHours(), CustomizationGroupResponse.from(groups),
+					DisallowedCombinationResponse.from(disallowed), p.getStatus(),
 					p.getProductionUnits(), p.getCreatedAt(), p.getUpdatedAt());
 		}
 

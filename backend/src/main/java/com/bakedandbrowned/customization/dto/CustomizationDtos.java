@@ -67,6 +67,10 @@ public final class CustomizationDtos {
 
 	}
 
+	/** Contract {@code DisallowedCombination}: two options of the product that cannot be chosen together. */
+	public record DisallowedCombination(@NotNull @Size(min = 2, max = 2) List<@NotNull UUID> optionIds) {
+	}
+
 	/** Contract {@code ProductCustomizationAssignment}. */
 	public record AssignmentWrite(@NotNull UUID groupId, @NotNull Boolean required,
 			@NotNull List<@NotNull UUID> allowedOptionIds, @Nullable @Min(1) @Max(250) Integer textMaxLength) {

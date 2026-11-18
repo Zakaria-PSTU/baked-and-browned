@@ -78,7 +78,8 @@ public class ProductCatalog {
 	public ProductResponse view(UUID productId) {
 		Product product = products.findWithCategory(productId)
 			.orElseThrow(() -> ApiException.notFound(ProductAdminService.PRODUCT_NOT_FOUND, "Product not found."));
-		return ProductResponse.from(product, customizations.forProduct(productId));
+		return ProductResponse.from(product, customizations.forProduct(productId),
+				customizations.disallowedCombinations(productId));
 	}
 
 }

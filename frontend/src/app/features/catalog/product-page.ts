@@ -23,6 +23,20 @@ export class ProductPage {
     stream: ({ params }) => this.api.product(params),
   });
 
+  /** Disallowed combinations as option-name pairs, for a short note under the options. */
+  protected readonly clashes = computed(() => {
+    const p = this.product.value();
+    if (!p) {
+      return [];
+    }
+    const names = new Map<string, string>();
+    p.customizationGroups.forEach((g) => g.options.forEach((o) => names.set(o.id, o.name)));
+    return p.disallowedCombinations
+      .map((c) => c.optionIds.map((id) => names.get(id)))
+      .filter((pair): pair is string[] => pair.every((name) => name !== undefined))
+      .map((pair) => pair.join(' + '));
+  });
+
   protected readonly notFound = computed(() => {
     const error = this.product.error();
     const cause = error && 'cause' in error ? error.cause : error;

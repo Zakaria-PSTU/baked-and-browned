@@ -17,6 +17,7 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   minLeadHours: 24,
   cancellationCutoffHours: 24,
   customizationGroups: [],
+  disallowedCombinations: [],
   ...overrides,
 });
 
@@ -165,6 +166,47 @@ describe('catalog pages', () => {
         ...(fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="option-notice"]'),
       ].map((n) => n.textContent?.trim());
       expect(notices).toEqual(["· needs 72 hours' notice"]);
+    });
+
+    it('lists combinations that cannot be chosen together', async () => {
+      const fixture = TestBed.createComponent(ProductPage);
+      fixture.componentRef.setInput('slug', 'celebration-cake');
+      await settle();
+      http.expectOne('/api/v1/products/celebration-cake').flush(
+        product({
+          customizationGroups: [
+            {
+              id: 'g1',
+              code: 'FINISH',
+              name: 'Finish',
+              selectionType: 'SINGLE',
+              required: true,
+              minSelections: 1,
+              maxSelections: 1,
+              options: [
+                { id: 'f1', name: 'Fondant', priceDelta: 500 },
+                { id: 'f2', name: 'Buttercream', priceDelta: 0 },
+              ],
+            },
+            {
+              id: 'g2',
+              code: 'TOPPING',
+              name: 'Topping',
+              selectionType: 'MULTIPLE',
+              required: false,
+              minSelections: 0,
+              maxSelections: 2,
+              options: [{ id: 't1', name: 'Fresh fruit', priceDelta: 300 }],
+            },
+          ],
+          // The second pair names an option the page does not show (inactive): left out.
+          disallowedCombinations: [{ optionIds: ['f1', 't1'] }, { optionIds: ['f2', 'gone'] }],
+        }),
+      );
+      await fixture.whenStable();
+
+      const note = (fixture.nativeElement as HTMLElement).querySelector('[data-testid="clashes"]');
+      expect(note?.textContent?.trim()).toBe('Not available together: Fondant + Fresh fruit.');
     });
 
     it('explains a missing product instead of showing an error', async () => {

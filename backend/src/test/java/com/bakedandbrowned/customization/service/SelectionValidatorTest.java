@@ -231,6 +231,34 @@ class SelectionValidatorTest {
 		assertThat(fancy.optionsTotal()).isEqualTo(Money.of("4300.00"));
 	}
 
+	@Test
+	void disallowedPairsAreRejectedNamingBothOptions() {
+		CustomizationRules rules = new CustomizationRules(List.of(SIZE, NOTE, TOPPINGS),
+				List.of(new CustomizationRules.OptionPair(TWELVE.id(), CARAMEL.id()),
+						new CustomizationRules.OptionPair(WALNUT.id(), SPRINKLES.id())));
+
+		assertRejected(() -> SelectionValidator.validate(rules, List.of(CARAMEL.id(), TWELVE.id()), Map.of()),
+				SelectionValidator.DISALLOWED_COMBINATION, "\"12 pieces\" and \"Caramel drizzle\" cannot be chosen together.");
+		// Within one group too.
+		assertRejected(
+				() -> SelectionValidator.validate(rules, List.of(SIX.id(), WALNUT.id(), SPRINKLES.id()), Map.of()),
+				SelectionValidator.DISALLOWED_COMBINATION, "\"Walnuts\" and \"Sprinkles\"");
+		// Either option alone, or with anything else, is fine.
+		assertThat(SelectionValidator.validate(rules, List.of(TWELVE.id(), WALNUT.id()), Map.of()).choices()).hasSize(2);
+		assertThat(SelectionValidator.validate(rules, List.of(SIX.id(), CARAMEL.id(), SPRINKLES.id()), Map.of())
+			.choices()).hasSize(3);
+	}
+
+	@Test
+	void pairsAreStoredInPostgresUuidOrderNotJavaOrder() {
+		UUID high = UUID.fromString("80000000-0000-0000-0000-000000000001");
+		UUID low = UUID.fromString("10000000-0000-0000-0000-000000000001");
+		// Java compares signed longs: 0x8000... is negative, so it sorts first there.
+		assertThat(high.compareTo(low)).isNegative();
+		assertThat(ProductCustomizationService.ordered(high, low)).containsExactly(low, high);
+		assertThat(ProductCustomizationService.ordered(low, high)).containsExactly(low, high);
+	}
+
 	// ------------------------------------------------------------------ helpers
 
 	private static ValidatedCustomization validate(List<UUID> options, Map<UUID, String> texts) {

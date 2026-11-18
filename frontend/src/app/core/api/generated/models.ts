@@ -29,6 +29,7 @@ export type { DeliverySlotUpdate } from './models/delivery-slot-update';
 export type { DeliverySlotWrite } from './models/delivery-slot-write';
 export type { DeliveryZone } from './models/delivery-zone';
 export type { DeliveryZoneWrite } from './models/delivery-zone-write';
+export type { DisallowedCombination } from './models/disallowed-combination';
 export type { Ingredient } from './models/ingredient';
 export type { IngredientCreate } from './models/ingredient-create';
 export type { InventoryMovement } from './models/inventory-movement';

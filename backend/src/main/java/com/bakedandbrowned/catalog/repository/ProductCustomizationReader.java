@@ -90,6 +90,34 @@ public class ProductCustomizationReader {
 		return forProducts(List.of(productId)).getOrDefault(productId, List.of());
 	}
 
+	/**
+	 * Disallowed combinations per product (ADR-0020), as option-id pairs, leaving out pairs with an
+	 * inactive option (customers never see those options). Products without any are absent.
+	 */
+	public Map<UUID, List<List<UUID>>> disallowedCombinations(Collection<UUID> productIds) {
+		Map<UUID, List<List<UUID>>> pairs = new LinkedHashMap<>();
+		if (productIds.isEmpty()) {
+			return pairs;
+		}
+		jdbc.query(con -> {
+			var ps = con.prepareStatement("""
+					SELECT d.product_id, d.option_a, d.option_b FROM product_disallowed_option_pairs d
+					JOIN customization_options a ON a.id = d.option_a AND a.active
+					JOIN customization_options b ON b.id = d.option_b AND b.active
+					WHERE d.product_id = ANY (?) ORDER BY d.product_id, d.option_a, d.option_b""");
+			ps.setArray(1, con.createArrayOf("uuid", productIds.toArray()));
+			return ps;
+		}, rs -> {
+			pairs.computeIfAbsent(rs.getObject("product_id", UUID.class), id -> new ArrayList<>())
+				.add(List.of(rs.getObject("option_a", UUID.class), rs.getObject("option_b", UUID.class)));
+		});
+		return pairs;
+	}
+
+	public List<List<UUID>> disallowedCombinations(UUID productId) {
+		return disallowedCombinations(List.of(productId)).getOrDefault(productId, List.of());
+	}
+
 	private static final class GroupBuilder {
 
 		private final UUID id;

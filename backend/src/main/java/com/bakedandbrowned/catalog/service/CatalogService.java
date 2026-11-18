@@ -59,13 +59,17 @@ public class CatalogService {
 				PageRequest.of(page, size, PRODUCT_ORDER));
 		Map<java.util.UUID, List<GroupView>> groups = customizations
 			.forProducts(found.getContent().stream().map(Product::getId).toList());
-		return PageResponse.of(found, p -> ProductResponse.from(p, groups.getOrDefault(p.getId(), List.of())));
+		Map<java.util.UUID, List<List<java.util.UUID>>> disallowed = customizations
+			.disallowedCombinations(found.getContent().stream().map(Product::getId).toList());
+		return PageResponse.of(found, p -> ProductResponse.from(p, groups.getOrDefault(p.getId(), List.of()),
+				disallowed.getOrDefault(p.getId(), List.of())));
 	}
 
 	public ProductResponse product(String slug) {
 		Product product = products.findVisibleBySlug(slug)
 			.orElseThrow(() -> ApiException.notFound(PRODUCT_NOT_FOUND, "Product not found."));
-		return ProductResponse.from(product, customizations.forProduct(product.getId()));
+		return ProductResponse.from(product, customizations.forProduct(product.getId()),
+				customizations.disallowedCombinations(product.getId()));
 	}
 
 	private static @Nullable String blankToNull(@Nullable String value) {

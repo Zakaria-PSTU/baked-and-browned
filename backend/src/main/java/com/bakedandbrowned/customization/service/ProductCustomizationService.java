@@ -17,6 +17,7 @@ import com.bakedandbrowned.audit.service.AuditLog;
 import com.bakedandbrowned.catalog.service.ProductCatalog;
 import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.customization.dto.CustomizationDtos.AssignmentWrite;
+import com.bakedandbrowned.customization.dto.CustomizationDtos.DisallowedCombination;
 import com.bakedandbrowned.customization.entity.CustomizationGroup;
 import com.bakedandbrowned.customization.entity.SelectionType;
 import com.bakedandbrowned.customization.repository.CustomizationGroupRepository;
@@ -39,6 +40,8 @@ public class ProductCustomizationService {
 	public static final String OPTION_NOT_IN_GROUP = "OPTION_NOT_IN_GROUP";
 
 	public static final String INVALID_ASSIGNMENT = "INVALID_ASSIGNMENT";
+
+	public static final String INVALID_COMBINATION = "INVALID_COMBINATION";
 
 	private final ProductCatalog catalog;
 
@@ -105,7 +108,80 @@ public class ProductCustomizationService {
 						productId, a.groupId(), optionId);
 			}
 		}
-		audit.admin(actor, "PRODUCT_CUSTOMIZATIONS_SET", "product", productId, null, Map.of("assignments", summary));
+		// A disallowed pair only makes sense while the product still allows both of its options.
+		int dropped = jdbc.update("""
+				DELETE FROM product_disallowed_option_pairs d
+				WHERE d.product_id = ?
+				  AND (NOT EXISTS (SELECT 1 FROM product_customization_options a
+				                   WHERE a.product_id = d.product_id AND a.option_id = d.option_a)
+				    OR NOT EXISTS (SELECT 1 FROM product_customization_options b
+				                   WHERE b.product_id = d.product_id AND b.option_id = d.option_b))""", productId);
+		Map<String, Object> details = new LinkedHashMap<>();
+		details.put("assignments", summary);
+		details.put("disallowedCombinationsDropped", dropped);
+		audit.admin(actor, "PRODUCT_CUSTOMIZATIONS_SET", "product", productId, null, details);
+	}
+
+	/** The product's disallowed combinations (ADR-0020), in a stable order. */
+	@Transactional(readOnly = true)
+	public List<DisallowedCombination> disallowedCombinations(UUID productId) {
+		catalog.requireExists(productId);
+		return combinations(productId);
+	}
+
+	/**
+	 * Replaces the product's disallowed combinations (an empty list removes them), under the product
+	 * row lock. Each names two different options the product currently allows; the same pair given
+	 * twice, in either order, is rejected.
+	 * @throws ApiException 422 {@link #INVALID_COMBINATION}; nothing changes then
+	 */
+	@Transactional
+	public List<DisallowedCombination> replaceDisallowedCombinations(UUID actor, UUID productId,
+			List<DisallowedCombination> combinations) {
+		catalog.lockForUpdate(productId);
+		Set<UUID> allowed = new HashSet<>(jdbc.queryForList(
+				"SELECT option_id FROM product_customization_options WHERE product_id = ?", UUID.class, productId));
+		Set<List<UUID>> pairs = new java.util.LinkedHashSet<>();
+		for (DisallowedCombination combination : combinations) {
+			UUID first = combination.optionIds().get(0);
+			UUID second = combination.optionIds().get(1);
+			if (first.equals(second)) {
+				throw ApiException.unprocessable(INVALID_COMBINATION, "A combination needs two different options.");
+			}
+			if (!allowed.contains(first) || !allowed.contains(second)) {
+				throw ApiException.unprocessable(INVALID_COMBINATION,
+						"A combination names an option this product does not offer.");
+			}
+			if (!pairs.add(ordered(first, second))) {
+				throw ApiException.unprocessable(INVALID_COMBINATION, "The same combination is listed more than once.");
+			}
+		}
+		jdbc.update("DELETE FROM product_disallowed_option_pairs WHERE product_id = ?", productId);
+		for (List<UUID> pair : pairs) {
+			jdbc.update("INSERT INTO product_disallowed_option_pairs (product_id, option_a, option_b) VALUES (?, ?, ?)",
+					productId, pair.get(0), pair.get(1));
+		}
+		List<DisallowedCombination> saved = combinations(productId);
+		audit.admin(actor, "PRODUCT_DISALLOWED_COMBINATIONS_SET", "product", productId, null,
+				Map.of("combinations", saved.stream().map(c -> c.optionIds().stream().map(UUID::toString).toList()).toList()));
+		return saved;
+	}
+
+	private List<DisallowedCombination> combinations(UUID productId) {
+		return rules.disallowedPairs(List.of(productId))
+			.getOrDefault(productId, List.of())
+			.stream()
+			.map(p -> new DisallowedCombination(List.of(p.first(), p.second())))
+			.toList();
+	}
+
+	/**
+	 * The pair in the order PostgreSQL sorts {@code uuid} (unsigned bytes, the same as the canonical
+	 * text), which the table's {@code option_a < option_b} check needs. {@link UUID#compareTo} uses
+	 * signed longs and can disagree.
+	 */
+	static List<UUID> ordered(UUID one, UUID other) {
+		return one.toString().compareTo(other.toString()) < 0 ? List.of(one, other) : List.of(other, one);
 	}
 
 	/**

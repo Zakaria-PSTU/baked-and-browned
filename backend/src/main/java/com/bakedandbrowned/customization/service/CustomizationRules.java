@@ -13,12 +13,29 @@ import com.bakedandbrowned.customization.entity.SelectionType;
 /**
  * Everything needed to validate one product's customization choices: its assigned groups (ordered
  * by code) with the options explicitly allowed for this product, including inactive ones (so
- * "inactive" can be told apart from "not allowed").
+ * "inactive" can be told apart from "not allowed"), and the option pairs it disallows together
+ * (ADR-0020).
  */
-public record CustomizationRules(List<GroupRule> groups) {
+public record CustomizationRules(List<GroupRule> groups, List<OptionPair> disallowedPairs) {
 
 	public CustomizationRules {
 		groups = List.copyOf(groups);
+		disallowedPairs = List.copyOf(disallowedPairs);
+	}
+
+	/** Rules without disallowed combinations. */
+	public CustomizationRules(List<GroupRule> groups) {
+		this(groups, List.of());
+	}
+
+	/** Two options of one product that cannot be chosen together; the order carries no meaning. */
+	public record OptionPair(UUID first, UUID second) {
+
+		public OptionPair {
+			Objects.requireNonNull(first, "first");
+			Objects.requireNonNull(second, "second");
+		}
+
 	}
 
 	/**

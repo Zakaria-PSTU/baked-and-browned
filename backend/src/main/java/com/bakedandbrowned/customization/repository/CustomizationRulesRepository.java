@@ -1,5 +1,6 @@
 package com.bakedandbrowned.customization.repository;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +14,7 @@ import com.bakedandbrowned.common.value.Money;
 import com.bakedandbrowned.customization.entity.SelectionType;
 import com.bakedandbrowned.customization.service.CustomizationRules;
 import com.bakedandbrowned.customization.service.CustomizationRules.GroupRule;
+import com.bakedandbrowned.customization.service.CustomizationRules.OptionPair;
 import com.bakedandbrowned.customization.service.CustomizationRules.OptionRule;
 
 /**
@@ -73,10 +75,30 @@ public class CustomizationRulesRepository {
 				}
 			});
 		}
+		Map<UUID, List<OptionPair>> pairs = disallowedPairs(productIds);
 		Map<UUID, CustomizationRules> rules = new LinkedHashMap<>();
-		drafts.forEach((id, groups) -> rules.put(id,
-				new CustomizationRules(groups.values().stream().map(GroupDraft::build).toList())));
+		drafts.forEach((id, groups) -> rules.put(id, new CustomizationRules(
+				groups.values().stream().map(GroupDraft::build).toList(), pairs.getOrDefault(id, List.of()))));
 		return rules;
+	}
+
+	/** Disallowed option pairs per product (ADR-0020); products without any are absent. */
+	public Map<UUID, List<OptionPair>> disallowedPairs(Collection<UUID> productIds) {
+		Map<UUID, List<OptionPair>> pairs = new LinkedHashMap<>();
+		if (productIds.isEmpty()) {
+			return pairs;
+		}
+		jdbc.query(con -> {
+			var ps = con.prepareStatement("""
+					SELECT product_id, option_a, option_b FROM product_disallowed_option_pairs
+					WHERE product_id = ANY (?) ORDER BY product_id, option_a, option_b""");
+			ps.setArray(1, con.createArrayOf("uuid", productIds.toArray()));
+			return ps;
+		}, rs -> {
+			pairs.computeIfAbsent(rs.getObject("product_id", UUID.class), id -> new ArrayList<>())
+				.add(new OptionPair(rs.getObject("option_a", UUID.class), rs.getObject("option_b", UUID.class)));
+		});
+		return pairs;
 	}
 
 	private record GroupDraft(UUID id, String code, String name, SelectionType type, boolean required, int min,

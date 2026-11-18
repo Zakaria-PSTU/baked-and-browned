@@ -70,6 +70,11 @@
           }
         </section>
       }
+      @if (clashes().length > 0) {
+        <p class="mt-4 text-sm text-stone-600" data-testid="clashes">
+          Not available together: {{ clashes().join('; ') }}.
+        </p>
+      }
 
       <p class="mt-8 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
         Online ordering opens soon.
