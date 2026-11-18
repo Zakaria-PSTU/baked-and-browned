@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import type { Product } from '../../core/api/generated/models';
 import { formatBdt } from '../../shared/bdt.pipe';
+import { CartStore } from '../cart/cart-store';
 import { CatalogPage } from './catalog-page';
 import { ProductPage } from './product-page';
 
@@ -333,6 +334,59 @@ describe('catalog pages', () => {
       );
       expect(textarea.getAttribute('aria-invalid')).toBe('true');
       expect(status()).toBe('Still to complete: Message on the cake.');
+    });
+
+    it('adds the complete choices to the cart with the chosen quantity', async () => {
+      localStorage.clear();
+      const cart = TestBed.inject(CartStore);
+      cart.clear();
+      const fixture = TestBed.createComponent(ProductPage);
+      fixture.componentRef.setInput('slug', 'fudge-brownie-box');
+      await settle();
+      http.expectOne('/api/v1/products/fudge-brownie-box').flush(
+        product({
+          customizationGroups: [
+            {
+              id: 'g1',
+              code: 'BOX_SIZE',
+              name: 'Box size',
+              selectionType: 'SINGLE',
+              required: true,
+              minSelections: 1,
+              maxSelections: 1,
+              options: [{ id: 'o2', name: '12 pieces', priceDelta: 600 }],
+            },
+          ],
+        }),
+      );
+      await fixture.whenStable();
+      const root = fixture.nativeElement as HTMLElement;
+      const add = [...root.querySelectorAll('button')].find((b) =>
+        b.textContent?.includes('Add to cart'),
+      );
+      expect(add?.disabled).toBe(true);
+
+      root.querySelector<HTMLInputElement>('input[value="o2"]')?.click();
+      const quantity = root.querySelector<HTMLInputElement>('#quantity');
+      if (!quantity || !add) {
+        throw new Error('no cart controls');
+      }
+      quantity.value = '3';
+      quantity.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+      expect(add.disabled).toBe(false);
+      add.click();
+      await fixture.whenStable();
+
+      expect(cart.items()).toEqual([
+        expect.objectContaining({
+          productName: 'Fudge Brownie Box',
+          choices: ['Box size: 12 pieces'],
+          line: { productId: 'p1', quantity: 3, selectedOptionIds: ['o2'], customTexts: {} },
+        }),
+      ]);
+      expect(root.querySelector('[data-testid="added"]')?.textContent).toContain('View cart');
+      cart.clear();
     });
 
     it('explains a missing product instead of showing an error', async () => {

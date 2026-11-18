@@ -12,6 +12,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import type { CartLine, CustomizationGroup } from '../../core/api/generated/models';
 import { BdtPipe } from '../../shared/bdt.pipe';
+import { CartStore, MAX_QUANTITY } from '../cart/cart-store';
 import { CatalogApi } from './catalog-api';
 import {
   EMPTY_SELECTION,
@@ -19,6 +20,7 @@ import {
   atLimit,
   blockedBy,
   choose,
+  describe,
   problems,
   setText,
   textLength,
@@ -27,8 +29,8 @@ import {
 
 /**
  * Product detail where the customer chooses the customizations it offers (a cake's size, flavor,
- * frosting, toppings and message). The choices become a cart line once the cart ships; prices and
- * the final validation always come from the server.
+ * frosting, toppings and message) and adds them to the cart. Prices and
+ * the final validation always come from the server, at checkout.
  */
 @Component({
   selector: 'bb-product-page',
@@ -47,7 +49,19 @@ export class ProductPage {
     stream: ({ params }) => this.api.product(params),
   });
 
+  private readonly cart = inject(CartStore);
+
   protected readonly selection = signal<Selection>(EMPTY_SELECTION);
+
+  protected readonly quantity = signal(1);
+
+  protected readonly maxQuantity = MAX_QUANTITY;
+
+  /** Shown after adding, until the choices change. */
+  protected readonly added = signal(false);
+
+  /** A distinct new line would not fit (adding an identical one only raises its quantity). */
+  protected readonly cartFull = this.cart.full;
 
   /** Groups the customer has interacted with; only their problems are shown inline. */
   private readonly touched = signal<ReadonlySet<string>>(new Set());
@@ -105,6 +119,8 @@ export class ProductPage {
       this.slug();
       this.selection.set(EMPTY_SELECTION);
       this.touched.set(new Set());
+      this.quantity.set(1);
+      this.added.set(false);
     });
   }
 
@@ -131,12 +147,14 @@ export class ProductPage {
 
   protected pick(group: CustomizationGroup, optionId: string | null): void {
     this.selection.update((s) => choose(group, s, optionId));
+    this.added.set(false);
     this.touch(group);
   }
 
   protected type(group: CustomizationGroup, event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value;
     this.selection.update((s) => setText(s, group.id, value));
+    this.added.set(false);
     this.touch(group);
   }
 
@@ -148,5 +166,26 @@ export class ProductPage {
 
   protected length(group: CustomizationGroup): number {
     return textLength(this.selection().texts.get(group.id) ?? '');
+  }
+
+  protected setQuantity(event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    this.quantity.set(Math.min(MAX_QUANTITY, Math.max(1, Math.trunc(value) || 1)));
+  }
+
+  protected addToCart(event: Event): void {
+    event.preventDefault();
+    const p = this.product.value();
+    const line = this.cartLine();
+    if (!p || !line || this.cart.full()) {
+      return;
+    }
+    this.cart.add({
+      slug: p.slug,
+      productName: p.name,
+      choices: describe(p, this.selection()),
+      line: { ...line, quantity: this.quantity() },
+    });
+    this.added.set(true);
   }
 }

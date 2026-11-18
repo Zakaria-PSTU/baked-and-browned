@@ -1,0 +1,88 @@
+@if (notFound()) {
+  <section class="py-12 text-center">
+    <h1 class="text-2xl font-semibold tracking-tight">We could not find this order</h1>
+    <p class="mt-3 text-stone-600">It may belong to another account.</p>
+    <a routerLink="/" class="mt-4 inline-block text-amber-800 underline">Back to the menu</a>
+  </section>
+} @else if (order.error()) {
+  <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+    We could not load this order. Please try again in a moment.
+  </p>
+} @else if (order.hasValue()) {
+  @let o = order.value();
+  @if (placed()) {
+    <p
+      class="mb-6 rounded-md bg-green-50 px-3 py-2 text-green-900"
+      role="status"
+      data-testid="placed"
+    >
+      Thank you! Your order is placed.
+    </p>
+  }
+  <h1 class="text-2xl font-semibold tracking-tight">Order {{ o.orderNumber }}</h1>
+  <p class="mt-1 text-stone-600" data-testid="order-status">{{ statusLabel(o.status) }}</p>
+
+  <div class="mt-6 grid gap-8 md:grid-cols-[1fr_20rem]">
+    <section>
+      <h2 class="font-medium">Items</h2>
+      <ul class="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+        @for (item of o.items; track $index) {
+          <li class="p-4" data-testid="order-item">
+            <div class="flex justify-between gap-4">
+              <span class="font-medium">{{ item.quantity }} × {{ item.productName }}</span>
+              <span>{{ item.lineTotal | bdt }}</span>
+            </div>
+            @if (item.customizations.length > 0) {
+              <ul class="mt-1 text-sm text-stone-600">
+                @for (c of item.customizations; track $index) {
+                  <li class="break-words">
+                    {{ c.groupName }}: {{ c.textValue ?? c.optionName }}
+                    @if (c.priceDelta > 0) {
+                      <span class="text-stone-500">(+ {{ c.priceDelta | bdt }})</span>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+
+    <aside class="h-fit space-y-4 rounded-lg border border-stone-200 bg-white p-4 text-sm">
+      <div>
+        <h2 class="font-medium">Delivery</h2>
+        <p class="mt-1">{{ formatRange(o.delivery.slotStartAt, o.delivery.slotEndAt) }}</p>
+        <p class="mt-1 break-words">{{ o.delivery.name }} · {{ o.delivery.phone }}</p>
+        <p class="break-words whitespace-pre-line">
+          {{ o.delivery.address }}, {{ o.delivery.zoneName }}
+        </p>
+      </div>
+      <dl class="space-y-1 border-t border-stone-200 pt-3">
+        <div class="flex justify-between">
+          <dt>Subtotal</dt>
+          <dd>{{ o.subtotal | bdt }}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt>Delivery</dt>
+          <dd>{{ o.deliveryFee | bdt }}</dd>
+        </div>
+        @if (o.discount > 0) {
+          <div class="flex justify-between">
+            <dt>Discount</dt>
+            <dd>− {{ o.discount | bdt }}</dd>
+          </div>
+        }
+        <div class="flex justify-between font-semibold">
+          <dt>Total</dt>
+          <dd>{{ o.total | bdt }}</dd>
+        </div>
+      </dl>
+      @if (o.payment.method === 'COD') {
+        <p class="text-stone-600">Pay {{ o.total | bdt }} in cash when it arrives.</p>
+      }
+    </aside>
+  </div>
+} @else {
+  <p class="text-stone-600" aria-live="polite">Loading…</p>
+}

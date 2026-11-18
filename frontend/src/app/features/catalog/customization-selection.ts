@@ -155,3 +155,22 @@ export function toCartLine(product: Product, selection: Selection, quantity: num
   }
   return { productId: product.id, quantity, selectedOptionIds, customTexts };
 }
+
+/** Labels for the cart, in display order: "Size: 2 kg", "Toppings: Strawberries, Walnuts". */
+export function describe(product: Product, selection: Selection): string[] {
+  const labels: string[] = [];
+  for (const group of product.customizationGroups) {
+    if (group.selectionType === 'TEXT') {
+      const text = normalizeText(selection.texts.get(group.id) ?? '');
+      if (text) {
+        labels.push(`${label(group)}: ${text}`);
+      }
+      continue;
+    }
+    const names = group.options.filter((o) => selection.optionIds.has(o.id)).map((o) => o.name);
+    if (names.length > 0) {
+      labels.push(`${label(group)}: ${names.join(', ')}`);
+    }
+  }
+  return labels;
+}

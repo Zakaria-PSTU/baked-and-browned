@@ -135,9 +135,37 @@
           }
         </p>
       }
-      <p class="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
-        Online ordering opens soon.
-      </p>
+      <form class="mt-4 flex flex-wrap items-end gap-3" (submit)="addToCart($event)">
+        <label class="text-sm">
+          <span class="block text-stone-600">Quantity</span>
+          <input
+            id="quantity"
+            type="number"
+            min="1"
+            [max]="maxQuantity"
+            class="mt-1 w-20 rounded-md border border-stone-300 px-2 py-1.5"
+            [value]="quantity()"
+            (input)="setQuantity($event)"
+          />
+        </label>
+        <button
+          type="submit"
+          class="rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+          [disabled]="!cartLine() || cartFull()"
+        >
+          Add to cart
+        </button>
+      </form>
+      @if (cartFull()) {
+        <p class="mt-2 text-sm text-stone-600">
+          Your cart is full. Check out or remove a line first.
+        </p>
+      }
+      @if (added()) {
+        <p class="mt-2 text-sm text-green-800" role="status" data-testid="added">
+          Added to your cart. <a routerLink="/cart" class="underline">View cart</a>
+        </p>
+      }
     </div>
   </article>
 } @else {

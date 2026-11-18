@@ -1,0 +1,215 @@
+<p class="text-sm">
+  <a routerLink="/cart" class="text-amber-800 underline">← Back to your cart</a>
+</p>
+<h1 class="mt-4 text-2xl font-semibold tracking-tight">Checkout</h1>
+
+@if (cart.items().length === 0) {
+  <section class="py-10 text-center">
+    <p class="text-stone-600">Your cart is empty.</p>
+    <a routerLink="/" class="mt-4 inline-block text-amber-800 underline">Browse the menu</a>
+  </section>
+} @else {
+  <div class="mt-6 grid gap-8 md:grid-cols-[1fr_20rem]">
+    <form [formGroup]="form" class="space-y-6" (ngSubmit)="review()" novalidate>
+      <fieldset class="space-y-4">
+        <legend class="font-medium">Delivery details</legend>
+
+        <div>
+          <label for="name" class="block text-sm font-medium">Recipient's name</label>
+          <input
+            id="name"
+            type="text"
+            formControlName="name"
+            autocomplete="name"
+            class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+            [attr.aria-invalid]="form.controls.name.invalid && form.controls.name.touched"
+          />
+          @if (form.controls.name.invalid && form.controls.name.touched) {
+            <p class="mt-1 text-sm text-red-700">Enter a name of up to 150 characters.</p>
+          }
+        </div>
+
+        <div>
+          <label for="phone" class="block text-sm font-medium">Mobile number</label>
+          <input
+            id="phone"
+            type="tel"
+            formControlName="phone"
+            autocomplete="tel"
+            placeholder="01712345678"
+            class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+            [attr.aria-invalid]="phoneInvalid()"
+          />
+          @if (phoneInvalid()) {
+            <p class="mt-1 text-sm text-red-700">Enter a Bangladeshi mobile number.</p>
+          }
+        </div>
+
+        <div>
+          <label for="area" class="block text-sm font-medium">Area</label>
+          <select
+            id="area"
+            formControlName="area"
+            class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+            [attr.aria-invalid]="form.controls.area.invalid && form.controls.area.touched"
+          >
+            <option value="" disabled>Choose your area</option>
+            @for (z of zones.value() ?? []; track z.code) {
+              <option [value]="z.code">{{ zoneLabel(z) }}</option>
+            }
+          </select>
+          @if (zones.error()) {
+            <p class="mt-1 text-sm text-red-700">
+              We could not load delivery areas. Please reload.
+            </p>
+          } @else if (form.controls.area.invalid && form.controls.area.touched) {
+            <p class="mt-1 text-sm text-red-700">Choose the area we deliver to.</p>
+          }
+        </div>
+
+        <div>
+          <label for="address" class="block text-sm font-medium">Address</label>
+          <textarea
+            id="address"
+            rows="2"
+            formControlName="address"
+            autocomplete="street-address"
+            class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+            [attr.aria-invalid]="form.controls.address.invalid && form.controls.address.touched"
+          ></textarea>
+          @if (form.controls.address.invalid && form.controls.address.touched) {
+            <p class="mt-1 text-sm text-red-700">Enter the full address (5 to 500 characters).</p>
+          }
+        </div>
+
+        <div>
+          <label for="notes" class="block text-sm font-medium"
+            >Notes for the rider <span class="font-normal text-stone-500">(optional)</span></label
+          >
+          <textarea
+            id="notes"
+            rows="2"
+            formControlName="notes"
+            class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+          ></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="font-medium">Delivery time</legend>
+        <label for="date" class="mt-2 block text-sm font-medium">Date</label>
+        <select
+          id="date"
+          class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+          [value]="date()"
+          (change)="chooseDate($event)"
+        >
+          @for (d of dates; track d) {
+            <option [value]="d">{{ formatDay(d) }}</option>
+          }
+        </select>
+        @if (slots.isLoading()) {
+          <p class="mt-3 text-sm text-stone-600" aria-live="polite">Loading times…</p>
+        } @else if (slots.error()) {
+          <p class="mt-3 text-sm text-red-700">
+            We could not load delivery times. Please try again.
+          </p>
+        } @else if ((slots.value() ?? []).length === 0) {
+          <p class="mt-3 text-sm text-stone-600">No delivery times left on this day.</p>
+        } @else {
+          <ul class="mt-3 space-y-1 text-sm">
+            @for (s of slots.value() ?? []; track s.id) {
+              <li>
+                <label class="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="slot"
+                    [value]="s.id"
+                    [checked]="slotId() === s.id"
+                    (change)="chooseSlot(s.id)"
+                  />
+                  {{ formatRange(s.startAt, s.endAt) }}
+                </label>
+              </li>
+            }
+          </ul>
+        }
+      </fieldset>
+
+      <fieldset>
+        <legend class="font-medium">Payment</legend>
+        <label class="mt-2 flex items-center gap-2 text-sm">
+          <input type="radio" name="payment" checked disabled />
+          Cash on delivery
+        </label>
+        <p class="mt-1 text-xs text-stone-500">Mobile wallet and card payments are coming soon.</p>
+      </fieldset>
+
+      @if (error(); as message) {
+        <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          {{ message }}
+        </p>
+      }
+
+      @if (!quote()) {
+        <button
+          type="submit"
+          class="rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+          [disabled]="busy()"
+        >
+          Review total
+        </button>
+      }
+    </form>
+
+    <aside class="h-fit rounded-lg border border-stone-200 bg-white p-4">
+      <h2 class="font-medium">Your order</h2>
+      <ul class="mt-2 space-y-2 text-sm">
+        @for (item of cart.items(); track item.id) {
+          <li>
+            <span class="font-medium">{{ item.line.quantity }} × {{ item.productName }}</span>
+            @for (choice of item.choices; track $index) {
+              <span class="block break-words text-stone-600">{{ choice }}</span>
+            }
+          </li>
+        }
+      </ul>
+      @if (quote(); as q) {
+        <dl class="mt-4 space-y-1 border-t border-stone-200 pt-3 text-sm" data-testid="quote">
+          <div class="flex justify-between">
+            <dt>Subtotal</dt>
+            <dd>{{ q.subtotal | bdt }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt>Delivery</dt>
+            <dd>{{ q.deliveryFee | bdt }}</dd>
+          </div>
+          @if (q.discount > 0) {
+            <div class="flex justify-between">
+              <dt>Discount</dt>
+              <dd>− {{ q.discount | bdt }}</dd>
+            </div>
+          }
+          <div class="flex justify-between font-semibold">
+            <dt>Total</dt>
+            <dd>{{ q.total | bdt }}</dd>
+          </div>
+        </dl>
+        <button
+          type="button"
+          class="mt-4 w-full rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+          [disabled]="busy()"
+          (click)="place()"
+        >
+          {{
+            busy() ? 'Placing your order…' : 'Place order · pay ' + (q.total | bdt) + ' on delivery'
+          }}
+        </button>
+      } @else {
+        <p class="mt-4 border-t border-stone-200 pt-3 text-sm text-stone-600">
+          Review the total to see prices and the delivery fee.
+        </p>
+      }
+    </aside>
+  </div>
+}

@@ -15,6 +15,23 @@ export const routes: Routes = [
     loadComponent: () => import('./features/catalog/product-page').then((m) => m.ProductPage),
   },
   {
+    path: 'cart',
+    title: 'Your cart · Baked & Browned',
+    loadComponent: () => import('./features/cart/cart-page').then((m) => m.CartPage),
+  },
+  {
+    path: 'checkout',
+    title: 'Checkout · Baked & Browned',
+    canMatch: [requireSignedIn],
+    loadComponent: () => import('./features/checkout/checkout-page').then((m) => m.CheckoutPage),
+  },
+  {
+    path: 'orders/:orderId',
+    title: 'Your order · Baked & Browned',
+    canMatch: [requireSignedIn],
+    loadComponent: () => import('./features/orders/order-page').then((m) => m.OrderPage),
+  },
+  {
     path: 'login',
     title: 'Log in · Baked & Browned',
     canMatch: [requireSignedOut],
