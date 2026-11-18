@@ -156,7 +156,8 @@ class CustomizationAdminIntegrationTests extends CatalogIntegrationTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.slug").value("fudge-box"))
 			.andExpect(jsonPath("$.customizationGroups[*].code", contains("BOX_SIZE", "GIFT_NOTE")))
-			.andExpect(jsonPath("$.customizationGroups[0].options[*].name", contains("12 pieces", "6 pieces")))
+			// Shown in the order listed (ADR-0021).
+			.andExpect(jsonPath("$.customizationGroups[0].options[*].name", contains("6 pieces", "12 pieces")))
 			.andExpect(jsonPath("$.customizationGroups[1].textMaxLength").value(40));
 
 		// The previous TOPPINGS assignment is gone, publicly too.

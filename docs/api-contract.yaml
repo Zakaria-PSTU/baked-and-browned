@@ -599,6 +599,7 @@ paths:
       security: [{bearerAuth: []}]
       operationId: adminSetProductCustomizations
       summary: Replace the product's customization groups and allowed options (v1.1)
+      description: The array order is the order customers see the groups in, and each allowedOptionIds order is the order of that group's options (ADR-0021).
       parameters:
         - {$ref: '#/components/parameters/ProductId'}
       requestBody:
@@ -1584,7 +1585,7 @@ components:
         allowedOptionIds:
           type: array
           uniqueItems: true
-          description: Must belong to the group; empty for TEXT groups.
+          description: Must belong to the group; empty for TEXT groups. Listed in display order (ADR-0021).
           items: {$ref: '#/components/schemas/Uuid'}
         textMaxLength: {type: integer, minimum: 1, maximum: 250, nullable: true}
     Product:
@@ -1903,7 +1904,7 @@ components:
     OrderItemCustomization:
       type: object
       required: [groupId, groupName, priceDelta]
-      description: Immutable snapshot; text is plain text and must be rendered escaped.
+      description: Immutable snapshot; text is plain text and must be rendered escaped. Listed in the order shown when the order was placed (ADR-0021).
       properties:
         groupId: {$ref: '#/components/schemas/Uuid'}
         groupName: {type: string}

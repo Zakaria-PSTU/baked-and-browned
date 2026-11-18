@@ -5,7 +5,7 @@ import { Money } from '../models/money';
 import { Uuid } from '../models/uuid';
 
 /**
- * Immutable snapshot; text is plain text and must be rendered escaped.
+ * Immutable snapshot; text is plain text and must be rendered escaped. Listed in the order shown when the order was placed (ADR-0021).
  */
 export interface OrderItemCustomization {
   groupId: Uuid;
