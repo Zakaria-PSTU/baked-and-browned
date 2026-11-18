@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import com.bakedandbrowned.delivery.DeliveryIntegrationTest;
 
 /** Inventory test base: ingredients (and by cascade recipes, reservations and movements) reset per test. */
-abstract class InventoryIntegrationTest extends DeliveryIntegrationTest {
+public abstract class InventoryIntegrationTest extends DeliveryIntegrationTest {
 
 	@BeforeEach
 	@AfterEach

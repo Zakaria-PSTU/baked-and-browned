@@ -1,6 +1,9 @@
 package com.bakedandbrowned.catalog.service;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -8,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.bakedandbrowned.catalog.dto.CatalogDtos.ProductResponse;
 import com.bakedandbrowned.catalog.entity.Product;
+import com.bakedandbrowned.catalog.entity.ProductStatus;
+import com.bakedandbrowned.common.value.Money;
 import com.bakedandbrowned.catalog.repository.ProductCustomizationReader;
 import com.bakedandbrowned.catalog.repository.ProductRepository;
 import com.bakedandbrowned.common.web.ApiException;
@@ -38,6 +43,26 @@ public class ProductCatalog {
 		if (products.lockById(productId).isEmpty()) {
 			throw ApiException.notFound(ProductAdminService.PRODUCT_NOT_FOUND, "Product not found.");
 		}
+	}
+
+	/** What ordering needs to price, schedule and snapshot a product, as it is now. */
+	public record PurchasableProduct(UUID id, String name, Money basePrice, int minLeadHours, int productionUnits,
+			int cancellationCutoffHours) {
+	}
+
+	/**
+	 * The purchasable products (ACTIVE, in an active category) among {@code ids}; absent ids are
+	 * unknown or not for sale.
+	 */
+	@Transactional(readOnly = true)
+	public Map<UUID, PurchasableProduct> purchasable(Collection<UUID> ids) {
+		if (ids.isEmpty()) {
+			return Map.of();
+		}
+		return products.findPurchasable(ids, ProductStatus.ACTIVE)
+			.stream()
+			.collect(Collectors.toMap(Product::getId, p -> new PurchasableProduct(p.getId(), p.getName(),
+					p.getBasePrice(), p.getMinLeadHours(), p.getProductionUnits(), p.getCancellationCutoffHours())));
 	}
 
 	/** @throws ApiException 404 {@code PRODUCT_NOT_FOUND} */

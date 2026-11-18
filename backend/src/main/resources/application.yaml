@@ -59,6 +59,14 @@ app:
     lease: 5m
     initial-backoff: 30s
     max-backoff: 1h
+  orders:
+    hold-expiry:
+      # HoldExpiryJob: unpaid ONLINE/MANUAL orders past their 15-minute hold become EXPIRED.
+      interval: PT1M
+      batch-size: 100
+      # A submitted MANUAL payment reference pauses expiry until whichever comes first.
+      manual-review-window: 6h
+      manual-review-slot-margin: 2h
   payments:
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
@@ -75,6 +83,10 @@ app:
       refresh:
         limit: 30
         window: 5m
+      # Per user (order placement, including idempotent replays).
+      checkout:
+        limit: 20
+        window: 10m
 
 logging:
   pattern:

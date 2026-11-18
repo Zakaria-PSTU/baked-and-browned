@@ -1,5 +1,7 @@
 package com.bakedandbrowned.catalog.repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,6 +34,12 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
 	@Query("select p from Product p join fetch p.category where p.id = :id")
 	Optional<Product> findWithCategory(@Param("id") UUID id);
+
+	/** Products with these ids that may be purchased: {@code status} (ACTIVE) in an active category. */
+	@Query("""
+			select p from Product p join fetch p.category c
+			where p.id in :ids and p.status = :status and c.active = true""")
+	List<Product> findPurchasable(@Param("ids") Collection<UUID> ids, @Param("status") ProductStatus status);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select p from Product p where p.id = :id")
