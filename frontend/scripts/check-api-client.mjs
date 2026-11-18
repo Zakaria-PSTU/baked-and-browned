@@ -1,17 +1,24 @@
 // CI guard: the committed API client must match docs/api-contract.yaml.
 // Regenerates it, then fails if anything under the output directory changed or appeared.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 const output = 'src/app/core/api/generated';
 
-execFileSync('npx', ['ng-openapi-gen'], { stdio: 'inherit', shell: process.platform === 'win32' });
+// Run the generator's CLI entry with this Node binary: no shell, no npx, same on every OS.
+const require = createRequire(import.meta.url);
+const manifestPath = require.resolve('ng-openapi-gen/package.json');
+const { bin } = JSON.parse(readFileSync(manifestPath, 'utf8'));
+execFileSync(process.execPath, [join(dirname(manifestPath), bin['ng-openapi-gen'])], {
+  stdio: 'inherit',
+});
 
 const changes = execFileSync(
   'git',
   ['status', '--porcelain', '--untracked-files=all', '--', output],
-  {
-    encoding: 'utf8',
-  },
+  { encoding: 'utf8' },
 ).trim();
 
 if (changes) {
