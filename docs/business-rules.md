@@ -12,7 +12,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - Categories include Brownies, Cookies, Pastries, Custom Cakes. Admin may add, rename, reorder and deactivate categories through admin APIs.
 - Each product has DRAFT/ACTIVE/ARCHIVED status, base price, minimum lead hours, production capacity units and a cancellation cutoff (hours, default 24).
 - Only ACTIVE products may be purchased. Archived products remain referenced by historical orders.
-- Brownie boxes are the first MVP vertical slice; cakes may require size, flavor, frosting, toppings and a short message.
+- Brownie boxes are the first MVP vertical slice; cakes may require size, flavor, frosting, toppings and a short message. Cake options may cost the kitchen more than their price shows: extra production units, more notice, extra ingredients (ADR-0019).
 - Product prices and option price deltas are maintained by ADMIN. Illustrative prices in UI samples are NOT official business prices.
 
 ## Customization
@@ -21,7 +21,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
   - required = true → selections must be between `max(min_selections, 1)` and `max_selections`.
   - required = false → zero selections, or between `max(min_selections, 1)` and `max_selections`.
 - Each selectable option must be explicitly allowed for the chosen product, be active, and belong to the stated group.
-- Validate minimum/maximum selections, duplicates, inactive options and text length. Disallowed combinations are validated once modeled (deferred to the custom-cake phase).
+- Validate minimum/maximum selections, duplicates, inactive options and text length, and that no two chosen options form a pair the product disallows (ADR-0020).
 - A TEXT group holds one customer message, maximum 250 characters in the database; a product may set a stricter `text_max_length` (e.g. 50), which the server enforces.
 - Never render messages as raw HTML (web, admin views and notifications). Snapshot names, text and price deltas on order items.
 
@@ -43,15 +43,15 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 
 ## Delivery scheduling
 - Delivery slots have start/end instants, capacity units, reserved units, active flag.
-- Total required capacity = sum(item quantity × product production units).
+- Total required capacity = sum(item quantity × (product production units + the chosen options' extra production units)) (ADR-0019).
 - Available capacity = capacity units − reserved units.
-- Every product's lead-time requirement must be met relative to the current time and chosen slot start.
+- Every line's lead-time requirement must be met relative to the current time and chosen slot start: the product's minimum lead hours, or a chosen option's when that is stricter (ADR-0019).
 - Admin can close a slot or reduce future capacity, but never below currently reserved units (409).
 - On order placement reserve slot capacity atomically. On cancellation/expiry release once only.
 - For future versions, distinguish production workload from courier delivery workload.
 
 ## Ingredient inventory
-- Each product maps to ingredient consumption quantities in consistent units (managed through admin recipe APIs).
+- Each product maps to ingredient consumption quantities in consistent units (managed through admin recipe APIs). A customization option may add its own ingredient lines per item, on top of the product recipe, the same on every product that offers it (ADR-0019).
 - `available = on_hand − reserved`.
 - Reserve ingredient quantities under row locks at checkout; reject insufficient stock with 409.
 - When an order enters PREPARING, consume its reservations exactly once: decrement `on_hand` and `reserved` atomically and mark reservations CONSUMED.
@@ -95,7 +95,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - Deduplicate callbacks using provider/event ID and transaction uniqueness.
 - Never call external payment services inside a database transaction.
 - Payment failures/expiry release reservations only after a terminal decision; ambiguous outcomes go to reconciliation.
-- Refunds: REQUESTED → APPROVED/REJECTED by ADMIN (reason required) → COMPLETED when the ADMIN records the external refund reference. Payment becomes REFUNDED only on COMPLETED. Every step is audited.
+- Refunds (ADR-0017): REQUESTED → APPROVED/REJECTED by ADMIN (note required) → COMPLETED when an ADMIN records the external refund reference. Whoever requested a refund never approves it: a second, enabled ADMIN must. Refunds may be partial; together they never exceed the payment, and only one is open at a time. Payment becomes REFUNDED only when completed refunds equal its amount. The customer is told by SMS when a refund is sent. Every step is audited.
 - Initial online gateway candidate: SSLCommerz, subject to merchant onboarding and confirmation of its current API requirements. Tests use a fake gateway.
 
 ## Customers and administration
@@ -106,7 +106,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - All administrative changes (catalog, prices, zones, slots, inventory, order status, payment decisions, refunds) are written to the audit log.
 
 ## Notifications
-- Send order received, confirmed, dispatched and cancelled notices via outbox after commit.
+- Send order received, confirmed, dispatched, cancelled and expired notices, and refund-sent notices, via outbox after commit.
 - Delivery failures must not roll back paid orders.
 - Notifications must be retryable and idempotent.
 

@@ -1,6 +1,6 @@
 # ADR-0011: COD and admin-verified manual payments
 
-- Status: Accepted
+- Status: Accepted (refund rules amended by ADR-0017)
 - Date: 2026-11-16
 
 ## Context

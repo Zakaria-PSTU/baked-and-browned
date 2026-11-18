@@ -116,4 +116,24 @@ public final class Money implements Comparable<Money> {
 		return amount.toPlainString();
 	}
 
+	/**
+	 * For customer-facing messages: {@code BDT 1,25,000.00} (South Asian digit grouping, as the web
+	 * client shows amounts). Never parse this back; use {@link #amount()} for values.
+	 */
+	public String toDisplayString() {
+		String plain = amount.toPlainString();
+		int dot = plain.indexOf('.');
+		String whole = plain.substring(0, dot);
+		StringBuilder grouped = new StringBuilder();
+		int length = whole.length();
+		for (int i = 0; i < length; i++) {
+			int fromEnd = length - i;
+			if (i > 0 && (fromEnd == 3 || (fromEnd > 3 && (fromEnd - 3) % 2 == 0))) {
+				grouped.append(',');
+			}
+			grouped.append(whole.charAt(i));
+		}
+		return "BDT " + grouped + plain.substring(dot);
+	}
+
 }

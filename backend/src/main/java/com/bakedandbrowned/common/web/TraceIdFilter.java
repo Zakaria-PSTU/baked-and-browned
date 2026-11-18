@@ -43,7 +43,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
 	}
 
 	/** The current request's trace id, or {@code null} outside a filtered request. */
-	static String traceId(HttpServletRequest request) {
+	public static String traceId(HttpServletRequest request) {
 		return request.getAttribute(ATTRIBUTE) instanceof String id ? id : null;
 	}
 

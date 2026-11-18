@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -57,8 +58,25 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<Object> handleApiException(ApiException ex, WebRequest request) {
-		return handleExceptionInternal(ex, problem(ex.status(), ex.code(), ex.getMessage()), new HttpHeaders(),
+		HttpHeaders headers = new HttpHeaders();
+		if (ex instanceof RateLimitExceededException limited) {
+			headers.set(HttpHeaders.RETRY_AFTER, Long.toString(limited.retryAfterSeconds()));
+		}
+		return handleExceptionInternal(ex, problem(ex.status(), ex.code(), ex.getMessage()), headers,
 				ex.status(), request);
+	}
+
+	/**
+	 * Method-security denials ({@code @PreAuthorize}) are thrown inside MVC, so they would otherwise
+	 * reach the catch-all below as a 500. URL rules already require authentication for every
+	 * non-public path, so the caller here is authenticated: 403.
+	 */
+	@ExceptionHandler(AccessDeniedException.class)
+	ResponseEntity<Object> handleAccessDenied(AccessDeniedException ex, WebRequest request) {
+		HttpStatus status = HttpStatus.FORBIDDEN;
+		return handleExceptionInternal(ex,
+				problem(status, "FORBIDDEN", "You do not have permission to perform this action."), new HttpHeaders(),
+				status, request);
 	}
 
 	@ExceptionHandler(Exception.class)

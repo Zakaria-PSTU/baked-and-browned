@@ -3,3 +3,5 @@ dist
 coverage
 node_modules
 package-lock.json
+# Generated from docs/api-contract.yaml by ng-openapi-gen (npm run api:generate)
+src/app/core/api/generated

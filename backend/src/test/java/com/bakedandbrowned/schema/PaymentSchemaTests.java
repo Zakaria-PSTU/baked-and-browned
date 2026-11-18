@@ -106,22 +106,46 @@ class PaymentSchemaTests extends AbstractSchemaTest {
 	}
 
 	@Test
-	void onlyOneActiveRefundPerPayment() {
+	void onlyOneOpenRefundPerPaymentAndNeverMoreThanWasPaid() {
+		// V7 (ADR-0017): partial refunds; the payment of these test orders is 1100.00.
 		UUID adminId = admin();
 		UUID orderId = order(user(), "ONLINE", "CANCELLED");
 		UUID paymentId = payment(orderId, "ONLINE", "SUCCEEDED");
 		String request = """
 				INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type)
-				VALUES (?, ?, 1100.00, 'Customer cancelled', 'SYSTEM') RETURNING id""";
+				VALUES (?, ?, 400.00, 'Partial refund', 'SYSTEM') RETURNING id""";
 
 		UUID first = jdbc.queryForObject(request, UUID.class, paymentId, orderId);
-		assertRejectedBy("uq_refund_active_per_payment",
-				() -> jdbc.queryForObject(request, UUID.class, paymentId, orderId));
+		assertRejectedBy("uq_refund_open_per_payment", () -> jdbc.queryForObject(request, UUID.class, paymentId, orderId));
 
+		// Once the first is completed, another may open: 400 + 400 is within 1100.
 		jdbc.update("""
-				UPDATE refunds SET status = 'REJECTED', decided_by = ?, decided_at = now(),
-				                   decision_note = 'Duplicate request' WHERE id = ?""", adminId, first);
-		jdbc.queryForObject(request, UUID.class, paymentId, orderId);
+				UPDATE refunds SET status = 'COMPLETED', decided_by = ?, decided_at = now(), decision_note = 'Approved',
+				                   external_reference = 'BANK-1', completed_at = now() WHERE id = ?""", adminId, first);
+		UUID second = jdbc.queryForObject(request, UUID.class, paymentId, orderId);
+		jdbc.update("""
+				UPDATE refunds SET status = 'COMPLETED', decided_by = ?, decided_at = now(), decision_note = 'Approved',
+				                   external_reference = 'BANK-2', completed_at = now() WHERE id = ?""", adminId, second);
+		// A third 400 would make 1200 of 1100.
+		assertRejectedBy("ck_refund_within_payment", () -> jdbc.queryForObject(request, UUID.class, paymentId, orderId));
+		jdbc.queryForObject(request.replace("400.00", "300.00"), UUID.class, paymentId, orderId);
+	}
+
+	@Test
+	void whoeverRequestedARefundNeverApprovesIt() {
+		UUID requester = admin();
+		UUID reviewer = admin();
+		UUID orderId = order(user(), "ONLINE", "CANCELLED");
+		UUID paymentId = payment(orderId, "ONLINE", "SUCCEEDED");
+		UUID refundId = jdbc.queryForObject("""
+				INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type, requested_by)
+				VALUES (?, ?, 1100.00, 'Goodwill', 'ADMIN', ?) RETURNING id""", UUID.class, paymentId, orderId, requester);
+		String approve = """
+				UPDATE refunds SET status = 'APPROVED', decided_by = ?, decided_at = now(), decision_note = 'Approved'
+				WHERE id = ?""";
+
+		assertRejectedBy("ck_refund_second_approver", () -> jdbc.update(approve, requester, refundId));
+		jdbc.update(approve, reviewer, refundId);
 	}
 
 	@Test

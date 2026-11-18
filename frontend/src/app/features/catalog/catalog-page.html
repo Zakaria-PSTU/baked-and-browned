@@ -1,0 +1,99 @@
+<section>
+  <h1 class="text-2xl font-semibold tracking-tight">Fresh from our Dhaka kitchen</h1>
+
+  <form class="mt-4 flex gap-2" role="search" [formGroup]="searchForm" (ngSubmit)="submitSearch()">
+    <label for="catalog-search" class="sr-only">Search products</label>
+    <input
+      id="catalog-search"
+      type="search"
+      formControlName="q"
+      maxlength="100"
+      placeholder="Search brownies, cookies, cakes…"
+      class="w-full max-w-sm rounded-md border border-stone-300 px-3 py-2"
+    />
+    <button type="submit" class="rounded-md bg-amber-800 px-4 py-2 font-medium text-white">
+      Search
+    </button>
+  </form>
+
+  <nav aria-label="Categories" class="mt-4 flex flex-wrap gap-2 text-sm">
+    <a
+      routerLink="/"
+      [queryParams]="{ q: q() }"
+      class="rounded-full border px-3 py-1"
+      [class.bg-stone-900]="!category()"
+      [class.text-white]="!category()"
+      [attr.aria-current]="!category() ? 'page' : null"
+      >All</a
+    >
+    @for (c of categories.value() ?? []; track c.id) {
+      <a
+        routerLink="/"
+        [queryParams]="{ category: c.slug, q: q() }"
+        class="rounded-full border px-3 py-1"
+        [class.bg-stone-900]="category() === c.slug"
+        [class.text-white]="category() === c.slug"
+        [attr.aria-current]="category() === c.slug ? 'page' : null"
+        >{{ c.name }}</a
+      >
+    }
+  </nav>
+
+  @if (products.error()) {
+    <p class="mt-8 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+      We could not load the menu. Please try again in a moment.
+    </p>
+  } @else if (products.hasValue()) {
+    @let result = products.value();
+    @if (result.content.length === 0) {
+      <p class="mt-8 text-stone-600">No products match. Try another search or category.</p>
+    } @else {
+      <ul class="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        @for (p of result.content; track p.id) {
+          <li class="overflow-hidden rounded-lg border border-stone-200 bg-white">
+            <a [routerLink]="['/products', p.slug]" class="block hover:bg-stone-50">
+              @if (p.imageUrl) {
+                <img
+                  [src]="p.imageUrl"
+                  [alt]="p.name"
+                  class="aspect-[4/3] w-full object-cover"
+                  loading="lazy"
+                />
+              } @else {
+                <div class="aspect-[4/3] w-full bg-amber-100" aria-hidden="true"></div>
+              }
+              <div class="p-4">
+                <h2 class="font-medium">{{ p.name }}</h2>
+                <p class="mt-1 text-sm text-stone-600">From {{ p.basePrice | bdt }}</p>
+              </div>
+            </a>
+          </li>
+        }
+      </ul>
+
+      @if (totalPages() > 1) {
+        <nav aria-label="Pages" class="mt-8 flex items-center justify-center gap-4 text-sm">
+          <button
+            type="button"
+            class="rounded-md border px-3 py-1 disabled:opacity-40"
+            [disabled]="pageIndex() === 0"
+            (click)="goToPage(pageIndex() - 1)"
+          >
+            Previous
+          </button>
+          <span>Page {{ pageIndex() + 1 }} of {{ totalPages() }}</span>
+          <button
+            type="button"
+            class="rounded-md border px-3 py-1 disabled:opacity-40"
+            [disabled]="pageIndex() + 1 >= totalPages()"
+            (click)="goToPage(pageIndex() + 1)"
+          >
+            Next
+          </button>
+        </nav>
+      }
+    }
+  } @else {
+    <p class="mt-8 text-stone-600" aria-live="polite">Loading the menu…</p>
+  }
+</section>

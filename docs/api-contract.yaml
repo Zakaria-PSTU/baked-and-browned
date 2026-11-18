@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -11,6 +11,10 @@ info:
     complete order detail, customer cancellation, manual payment submission,
     delivery zones, and the admin operational APIs. No v1.0 operation, field
     or required property was removed or renamed.
+
+    v1.2 (ADR-0017), also additive: partial refunds (optional `amount` on
+    adminRequestRefund, `refundedAmount` on AdminPayment) and second-approver
+    review (the ADMIN who requested a refund never approves it).
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -272,7 +276,7 @@ paths:
       tags: [Payments]
       security: [{bearerAuth: []}]
       operationId: initiatePayment
-      description: ONLINE orders only. Reuses an open session for the current payment when one exists.
+      description: ONLINE orders only. Reuses an open session for the current payment when one exists. After a failed or cancelled attempt, a retry within the hold starts a new payment record. The checkout URL is only where to send the browser; payment is confirmed solely by the provider callback, verified server to server.
       parameters:
         - {$ref: '#/components/parameters/OrderId'}
       responses:
@@ -289,6 +293,37 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /payments/{orderId}/return:
+    get:
+      tags: [Payments]
+      operationId: paymentReturn
+      description: |
+        Where a hosted payment page sends the customer's browser back (success,
+        failure or cancellation). Public and inert: it reads nothing the browser
+        sends, changes nothing, and redirects to the web app's order page. Never
+        proof of payment; only the verified provider callback is.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '303':
+          description: Redirect to the web app's order page
+          headers:
+            Location:
+              schema: {type: string, format: uri}
+    post:
+      tags: [Payments]
+      operationId: paymentReturnPost
+      description: Same as GET, for providers that return the browser with a form POST.
+      parameters:
+        - {$ref: '#/components/parameters/OrderId'}
+      responses:
+        '303':
+          description: Redirect to the web app's order page
+          headers:
+            Location:
+              schema: {type: string, format: uri}
   /payments/{orderId}/manual-submission:
     post:
       tags: [Payments]
@@ -582,6 +617,53 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/products/{productId}/disallowed-combinations:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetDisallowedCombinations
+      summary: Pairs of this product's options that cannot be chosen together (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      responses:
+        '200':
+          description: Disallowed combinations, including pairs with an inactive option
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DisallowedCombination'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetDisallowedCombinations
+      description: |
+        Replaces the product's disallowed combinations (an empty list removes them).
+        Each names two different options the product currently allows; the same pair
+        twice, in either order, is 422. Replacing the product's customizations later
+        drops pairs whose options it no longer allows.
+      parameters:
+        - {$ref: '#/components/parameters/ProductId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/DisallowedCombination'}
+      responses:
+        '200':
+          description: Updated disallowed combinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DisallowedCombination'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/products/{productId}/ingredients:
     get:
       tags: [Admin]
@@ -723,6 +805,49 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+  /admin/customization-options/{optionId}/ingredients:
+    get:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminGetOptionIngredients
+      summary: Ingredient consumption this option adds per item (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/OptionId'}
+      responses:
+        '200':
+          description: Ingredient lines per item the option is chosen on
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      operationId: adminSetOptionIngredients
+      summary: Replace the ingredients this option adds per item, on top of the product recipe (v1.2)
+      parameters:
+        - {$ref: '#/components/parameters/OptionId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/ProductIngredientLine'}
+      responses:
+        '200':
+          description: Updated option ingredients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ProductIngredientLine'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/delivery-zones:
     get:
@@ -987,7 +1112,12 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminRequestRefund
-      summary: Open a full refund request for a SUCCEEDED payment (v1.1)
+      summary: Open a full or partial refund request for a SUCCEEDED payment (v1.1, partial v1.2)
+      description: |
+        Another ADMIN must approve the request. Refunds of a payment never exceed
+        it in total, and only one may be open (REQUESTED or APPROVED) at a time.
+        Without `amount` the request covers everything not yet refunded.
+        409 codes: PAYMENT_NOT_REFUNDABLE, REFUND_ALREADY_OPEN, REFUND_EXCEEDS_REMAINING.
       parameters:
         - {$ref: '#/components/parameters/PaymentId'}
       requestBody:
@@ -999,6 +1129,10 @@ paths:
               required: [reason]
               properties:
                 reason: {type: string, minLength: 3, maxLength: 500}
+                amount:
+                  allOf:
+                    - {$ref: '#/components/schemas/Money'}
+                  description: Partial amount (v1.2), greater than 0 and at most what is left; defaults to all of it.
       responses:
         '201':
           description: Refund requested
@@ -1008,6 +1142,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/refunds:
     get:
       tags: [Admin]
@@ -1029,6 +1164,10 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminDecideRefund
+      description: |
+        Second approver (v1.2): the ADMIN who requested a refund may REJECT
+        (withdraw) it but never APPROVE it (409 SECOND_APPROVER_REQUIRED); the
+        decision needs an enabled ADMIN account at the time it is made.
       parameters:
         - {$ref: '#/components/parameters/RefundId'}
       requestBody:
@@ -1050,7 +1189,10 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminCompleteRefund
-      description: Records the external refund reference for an APPROVED refund; payment becomes REFUNDED.
+      description: |
+        Records the external refund reference for an APPROVED refund and sends the
+        customer an SMS. The payment becomes REFUNDED once its completed refunds add
+        up to the full amount; a partial refund leaves it SUCCEEDED (v1.2).
       parameters:
         - {$ref: '#/components/parameters/RefundId'}
       requestBody:
@@ -1091,7 +1233,11 @@ paths:
       description: |
         REINSTATE re-reserves slot and inventory under locks and moves an EXPIRED
         order to CONFIRMED; 409 if capacity or stock is no longer available.
-        REQUEST_REFUND opens a refund request. NO_ACTION closes the case.
+        An order still waiting for payment because it was held for review
+        (HIGH_RISK) is confirmed with the holds it still has. Only for a received,
+        current payment.
+        REQUEST_REFUND opens a refund request over what is left of the payment,
+        for a second ADMIN to approve. NO_ACTION closes the case.
       parameters:
         - {$ref: '#/components/parameters/CaseId'}
       requestBody:
@@ -1108,6 +1254,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/dashboard/summary:
     get:
       tags: [Admin]
@@ -1122,17 +1269,30 @@ paths:
                 type: object
                 required: [ordersToday, revenueToday, pendingOrders, preparingOrders]
                 properties:
-                  ordersToday: {type: integer}
+                  ordersToday:
+                    type: integer
+                    description: Booked orders placed today — the same set as revenueToday.
                   revenueToday:
                     allOf:
                       - {$ref: '#/components/schemas/Money'}
                     description: Booked revenue — total of today's orders not in PENDING_PAYMENT, CANCELLED or EXPIRED.
-                  pendingOrders: {type: integer}
-                  preparingOrders: {type: integer}
-                  collectedToday: {$ref: '#/components/schemas/Money'}
-                  awaitingPaymentVerification: {type: integer}
+                  pendingOrders:
+                    type: integer
+                    description: Orders in CONFIRMED (paid or COD, waiting to be prepared), any day.
+                  preparingOrders:
+                    type: integer
+                    description: Orders in PREPARING, any day.
+                  collectedToday:
+                    allOf:
+                      - {$ref: '#/components/schemas/Money'}
+                    description: Payments recorded as received today (manual approvals, COD cash collected, online payments captured), gross of refunds.
+                  awaitingPaymentVerification:
+                    type: integer
+                    description: MANUAL payments whose latest submission awaits ADMIN verification.
                   openReconciliationCases: {type: integer}
-                  lowStockIngredients: {type: integer}
+                  lowStockIngredients:
+                    type: integer
+                    description: Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
         '403': {$ref: '#/components/responses/Forbidden'}
   /admin/reports/daily-sales:
     get:
@@ -1254,6 +1414,11 @@ components:
       content:
         application/problem+json:
           schema: {$ref: '#/components/schemas/Problem'}
+    ServiceUnavailable:
+      description: A required external service, such as the payment provider, could not be reached; retry later
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
     PayloadTooLarge:
       description: Upload exceeds the size limit
       content:
@@ -1340,14 +1505,25 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         name: {type: string}
         priceDelta: {$ref: '#/components/schemas/Money'}
+        minLeadHours:
+          type: integer
+          minimum: 0
+          maximum: 720
+          nullable: true
+          description: Notice this option needs, in hours; applies when stricter than the product's minLeadHours (v1.2).
     AdminOption:
       allOf:
         - {$ref: '#/components/schemas/Option'}
         - type: object
-          required: [groupId, active]
+          required: [groupId, active, extraProductionUnits]
           properties:
             groupId: {$ref: '#/components/schemas/Uuid'}
             active: {type: boolean}
+            extraProductionUnits:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Kitchen capacity units this option adds per item, on top of the product's (v1.2).
     OptionWrite:
       type: object
       required: [name, priceDelta]
@@ -1355,6 +1531,8 @@ components:
         name: {type: string, minLength: 1, maxLength: 120}
         priceDelta: {$ref: '#/components/schemas/Money'}
         active: {type: boolean, default: true}
+        extraProductionUnits: {type: integer, minimum: 0, maximum: 100, default: 0, description: 'Kitchen capacity units added per item (v1.2)'}
+        minLeadHours: {type: integer, minimum: 0, maximum: 720, nullable: true, description: 'Notice this option needs; absent or null means none (v1.2)'}
     CustomizationGroup:
       type: object
       required: [id, code, selectionType, required, minSelections, maxSelections, options]
@@ -1411,7 +1589,7 @@ components:
         textMaxLength: {type: integer, minimum: 1, maximum: 250, nullable: true}
     Product:
       type: object
-      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups]
+      required: [id, name, slug, categoryId, basePrice, currency, minLeadHours, customizationGroups, disallowedCombinations]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         name: {type: string}
@@ -1426,6 +1604,20 @@ components:
         customizationGroups:
           type: array
           items: {$ref: '#/components/schemas/CustomizationGroup'}
+        disallowedCombinations:
+          type: array
+          description: Pairs of offered options that cannot be chosen together; a cart choosing both is rejected (422 DISALLOWED_COMBINATION) (v1.2).
+          items: {$ref: '#/components/schemas/DisallowedCombination'}
+    DisallowedCombination:
+      type: object
+      required: [optionIds]
+      properties:
+        optionIds:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Two different options the product offers; order carries no meaning.
+          items: {$ref: '#/components/schemas/Uuid'}
     ProductPage:
       type: object
       required: [content, page, size, totalElements]
@@ -1846,6 +2038,10 @@ components:
           allOf:
             - {$ref: '#/components/schemas/ManualPaymentSubmission'}
           nullable: true
+        refundedAmount:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          description: Total of completed refunds (v1.2).
         createdAt: {type: string, format: date-time}
     AdminPaymentPage:
       type: object
@@ -1902,7 +2098,15 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         paymentId: {$ref: '#/components/schemas/Uuid'}
         orderId: {$ref: '#/components/schemas/Uuid'}
+        orderNumber: {type: string}
         caseType: {type: string, enum: [LATE_SUCCESS, AMOUNT_MISMATCH, AMBIGUOUS_STATUS]}
+        reason:
+          type: string
+          nullable: true
+          description: |
+            Machine-readable cause when recorded, for example HIGH_RISK,
+            SUCCESS_ON_REPLACED_ATTEMPT or GATEWAY_STATUS_UNKNOWN (AMBIGUOUS_STATUS),
+            PAID_AFTER_ORDER_EXPIRED (LATE_SUCCESS).
         status: {type: string, enum: [OPEN, RESOLVED]}
         resolution: {type: string, enum: [REINSTATED, REFUND_REQUESTED, NO_ACTION], nullable: true}
         resolutionNote: {type: string, nullable: true}

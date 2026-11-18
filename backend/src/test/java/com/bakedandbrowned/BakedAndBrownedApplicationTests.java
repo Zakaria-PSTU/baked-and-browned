@@ -1,5 +1,6 @@
 package com.bakedandbrowned;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -29,8 +30,9 @@ class BakedAndBrownedApplicationTests {
 
 	@Test
 	void nonHealthActuatorEndpointsAreNotExposed() throws Exception {
-		mockMvc.perform(get("/actuator/env")).andExpect(status().isNotFound());
-		mockMvc.perform(get("/actuator/beans")).andExpect(status().isNotFound());
+		// Authenticated, so default deny (401) does not mask whether the endpoint exists.
+		mockMvc.perform(get("/actuator/env").with(jwt())).andExpect(status().isNotFound());
+		mockMvc.perform(get("/actuator/beans").with(jwt())).andExpect(status().isNotFound());
 	}
 
 }

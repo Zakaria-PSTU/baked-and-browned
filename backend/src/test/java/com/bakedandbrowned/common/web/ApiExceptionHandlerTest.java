@@ -13,7 +13,12 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -34,13 +39,29 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 @WebMvcTest(controllers = ApiExceptionHandlerTest.ProbeController.class)
-@Import(ApiExceptionHandlerTest.ProbeController.class)
+@Import({ ApiExceptionHandlerTest.ProbeController.class, ApiExceptionHandlerTest.OpenSecurity.class })
 class ApiExceptionHandlerTest {
 
 	private static final String TRACE_ID = "^[0-9a-f]{32}$";
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	/**
+	 * This slice tests MVC error rendering, not access rules (those are covered against the real
+	 * {@code SecurityConfig} in the integration tests), so the probes are open.
+	 */
+	@TestConfiguration(proxyBeanMethods = false)
+	static class OpenSecurity {
+
+		@Bean
+		SecurityFilterChain openProbes(HttpSecurity http) throws Exception {
+			return http.csrf(AbstractHttpConfigurer::disable)
+				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+				.build();
+		}
+
+	}
 
 	record Line(@NotNull Money unitPrice) {
 	}

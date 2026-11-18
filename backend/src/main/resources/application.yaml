@@ -19,6 +19,128 @@ spring:
           time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Manual-payment proof files are at most 5 MB (ADR-0011); larger requests are refused with 413.
+      max-file-size: 5MB
+      max-request-size: 6MB
+  task:
+    scheduling:
+      pool:
+        # Outbox dispatch, hold expiry, payment reconciliation and housekeeping must not wait behind each other.
+        size: 4
+
+server:
+  # Honor X-Forwarded-For/-Proto only from trusted internal proxies (Tomcat RemoteIpValve), so
+  # request.getRemoteAddr() is the real client for rate limiting and cannot be spoofed directly.
+  forward-headers-strategy: native
+
+app:
+  security:
+    jwt:
+      issuer: https://api.bakedandbrowned.com.bd
+      audience: baked-and-browned-web
+      access-token-ttl: 15m
+      key-id: bb-access-1
+      # PKCS#8 PEM RSA key (>= 2048 bits), only from the environment or a secret store:
+      # APP_SECURITY_JWT_PRIVATE_KEY. Startup fails without it unless allow-ephemeral-key is true.
+      private-key:
+      allow-ephemeral-key: false
+    refresh-token-ttl: 14d
+    # Expired families are deleted this long after their last token expired (RefreshTokenCleanup).
+    refresh-token-retention: 7d
+    refresh-token-cleanup-cron: "0 17 * * * *"
+    secure-cookies: true
+    # Exact Origin values accepted on /auth/refresh and /auth/logout. Set APP_SECURITY_ALLOWED_ORIGINS
+    # to the production origin; the default only fits local development (ng serve).
+    allowed-origins:
+      - http://localhost:4200
+  scheduling:
+    # Background jobs (SchedulingConfig). Integration tests turn this off and run jobs directly.
+    enabled: true
+  outbox:
+    poll-interval: PT5S
+    batch-size: 50
+    lease: 5m
+    initial-backoff: 30s
+    max-backoff: 1h
+  orders:
+    hold-expiry:
+      # HoldExpiryJob: unpaid ONLINE/MANUAL orders past their 15-minute hold become EXPIRED.
+      interval: PT1M
+      batch-size: 100
+      # A submitted MANUAL payment reference pauses expiry until whichever comes first.
+      manual-review-window: 6h
+      manual-review-slot-margin: 2h
+  payments:
+    proof-storage:
+      # Private volume outside any web root, backed up with the database. Set
+      # APP_PAYMENTS_PROOF_STORAGE_DIRECTORY in deployments.
+      directory: data/payment-proofs
+    online:
+      # Gateway for new ONLINE sessions (PaymentGateways). Blank: the only adapter present, if any.
+      provider:
+      # Where the customer's browser lands after the hosted page; never proof of payment. Set
+      # APP_PAYMENTS_ONLINE_RETURN_URL to the production web origin.
+      return-url: http://localhost:4200/orders/{orderId}/payment
+      # Public origin of this API: hosted pages send the browser back to {api-base-url}/api/v1/payments/{orderId}/return.
+      # Set APP_PAYMENTS_ONLINE_API_BASE_URL in deployments.
+      api-base-url: http://localhost:8080
+    sslcommerz:
+      # SslCommerzGateway (ADR-0012). Off unless enabled; then every value below is required. Credentials only from
+      # the environment: APP_PAYMENTS_SSLCOMMERZ_STORE_ID, APP_PAYMENTS_SSLCOMMERZ_STORE_PASSWORD.
+      enabled: false
+      base-url: https://sandbox.sslcommerz.com
+      store-id:
+      store-password:
+      # Public webhook URL, e.g. https://api.bakedandbrowned.com.bd/api/v1/payments/webhooks/sslcommerz
+      ipn-url:
+      # SSLCommerz requires a customer email; used when the account has none (APP_PAYMENTS_SSLCOMMERZ_FALLBACK_CUSTOMER_EMAIL).
+      fallback-customer-email:
+      customer-city: Dhaka
+      customer-postcode: "1000"
+      customer-country: Bangladesh
+      connect-timeout: 5s
+      read-timeout: 20s
+    reconciliation:
+      # ReconciliationJob: asks gateways about ONLINE payments whose callback may have been missed.
+      interval: PT1M
+      batch-size: 50
+      # Leave the provider callback this long before asking.
+      min-age: 2m
+      # Shortest wait between asks about one payment; grows to a quarter of its age.
+      recheck: 5m
+      # Stop asking after this; a payment whose last ask failed then becomes an AMBIGUOUS_STATUS case.
+      lookback: 48h
+    fake:
+      # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
+      checkout-base-url: http://localhost:4200/dev/fake-gateway
+  rate-limits:
+    policies:
+      # Per client IP.
+      login:
+        limit: 10
+        window: 5m
+      register:
+        limit: 5
+        window: 15m
+      refresh:
+        limit: 30
+        window: 5m
+      # Per user (order placement, including idempotent replays).
+      checkout:
+        limit: 20
+        window: 10m
+      manual-payment:
+        limit: 5
+        window: 15m
+      payment-initiation:
+        limit: 20
+        window: 15m
+      # Per client IP: each verified notice costs a server-to-server call to the provider.
+      payment-webhook:
+        limit: 120
+        window: 1m
 
 logging:
   pattern:
