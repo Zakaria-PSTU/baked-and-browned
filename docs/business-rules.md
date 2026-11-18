@@ -95,7 +95,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - Deduplicate callbacks using provider/event ID and transaction uniqueness.
 - Never call external payment services inside a database transaction.
 - Payment failures/expiry release reservations only after a terminal decision; ambiguous outcomes go to reconciliation.
-- Refunds: REQUESTED → APPROVED/REJECTED by ADMIN (reason required) → COMPLETED when the ADMIN records the external refund reference. Payment becomes REFUNDED only on COMPLETED. Every step is audited.
+- Refunds (ADR-0017): REQUESTED → APPROVED/REJECTED by ADMIN (note required) → COMPLETED when an ADMIN records the external refund reference. Whoever requested a refund never approves it: a second, enabled ADMIN must. Refunds may be partial; together they never exceed the payment, and only one is open at a time. Payment becomes REFUNDED only when completed refunds equal its amount. The customer is told by SMS when a refund is sent. Every step is audited.
 - Initial online gateway candidate: SSLCommerz, subject to merchant onboarding and confirmation of its current API requirements. Tests use a fake gateway.
 
 ## Customers and administration
@@ -106,7 +106,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - All administrative changes (catalog, prices, zones, slots, inventory, order status, payment decisions, refunds) are written to the audit log.
 
 ## Notifications
-- Send order received, confirmed, dispatched and cancelled notices via outbox after commit.
+- Send order received, confirmed, dispatched, cancelled and expired notices, and refund-sent notices, via outbox after commit.
 - Delivery failures must not roll back paid orders.
 - Notifications must be retryable and idempotent.
 

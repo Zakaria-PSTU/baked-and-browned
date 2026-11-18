@@ -78,7 +78,7 @@ The generic `PATCH /admin/orders/{id}/status` cannot move an order out of PENDIN
 - `PaymentGateway` port (payment module), provider-agnostic: `createSession(order, payment) → {sessionId, checkoutUrl}`, `verify(providerEvent) → VerifiedPaymentResult`, `queryStatus(sessionId) → VerifiedPaymentResult`. Adapters translate provider callbacks (JSON or form-encoded) into the port's types; verification always includes a server-to-server status/validation call where the provider offers one.
 - Phase 1: port + `FakePaymentGateway` (test/dev profiles only). Phase 3: SSLCommerz adapter after merchant onboarding and confirmation of current API requirements.
 - Manual payments: customer submission (provider, reference, optional proof) → ADMIN verification or rejection → audit. Proof files are stored outside the web root in private storage (local volume in MVP behind a `ProofStorage` interface), validated by magic bytes, max 5 MB, JPEG/PNG/PDF, served only to ADMIN with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`.
-- Refunds are a separate workflow (REQUESTED → APPROVED/REJECTED → COMPLETED), always ADMIN-decided and audited.
+- Refunds are a separate workflow (REQUESTED → APPROVED/REJECTED → COMPLETED), audited, and approved by a second ADMIN, never the requester (ADR-0017). Full or partial; together never more than the payment.
 
 ## Scheduled workers
 - Hold expiry: every minute, claim overdue PENDING_PAYMENT orders with `FOR UPDATE SKIP LOCKED`, re-check, expire, release once.
@@ -119,4 +119,4 @@ Build frontend static assets and backend container; run PostgreSQL on a private 
 ADR-001 modular monolith; ADR-002 PostgreSQL as source of truth; ADR-003 outbox for reliable side effects; ADR-004 server-owned pricing; ADR-005 hosted payment page; ADR-006 no external calls inside transactions. ADR-0007 onward are recorded in `docs/adr/`.
 
 ## Explicit future extensions
-Ingredient lots/expiry and wastage ledger; production jobs separate from delivery slots; promotions; guest checkout; product images/object storage; partial refunds; notification templates; customer address book; password reset.
+Ingredient lots/expiry and wastage ledger; production jobs separate from delivery slots; promotions; guest checkout; product images/object storage; notification templates; customer address book; password reset.

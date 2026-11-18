@@ -33,6 +33,8 @@ public class AdminPaymentQueries {
 			p.id, p.order_id, o.order_number, p.method::text AS method, p.provider, p.provider_transaction_id,
 			p.amount, p.currency, p.status::text AS status, p.failure_reason, p.verified_by, p.verified_at,
 			p.verification_note, p.created_at,
+			(SELECT coalesce(sum(r.amount), 0) FROM refunds r WHERE r.payment_id = p.id AND r.status = 'COMPLETED')
+			  AS refunded_amount,
 			m.id AS m_id, m.provider AS m_provider, m.transaction_reference AS m_reference,
 			m.status::text AS m_status, m.proof_storage_key IS NOT NULL AS m_has_proof, m.created_at AS m_created_at
 			FROM payments p
@@ -95,18 +97,22 @@ public class AdminPaymentQueries {
 
 	/** Every refund request of the order, oldest first. */
 	public List<Refund> refunds(UUID orderId) {
-		return jdbc.query("""
-				SELECT id, payment_id, order_id, amount, currency, status::text AS status, request_reason,
-				       requested_by_type::text AS requested_by_type, decided_by, decided_at, decision_note,
-				       external_reference, completed_at, created_at
-				FROM refunds WHERE order_id = ? ORDER BY created_at, id""",
-				(rs, row) -> new Refund(rs.getObject("id", UUID.class), rs.getObject("payment_id", UUID.class),
-						rs.getObject("order_id", UUID.class), Money.of(rs.getBigDecimal("amount")),
-						rs.getString("currency").strip(), rs.getString("status"), rs.getString("request_reason"),
-						rs.getString("requested_by_type"), rs.getObject("decided_by", UUID.class),
-						instant(rs, "decided_at"), rs.getString("decision_note"), rs.getString("external_reference"),
-						instant(rs, "completed_at"), rs.getTimestamp("created_at").toInstant()),
-				orderId);
+		return jdbc.query("SELECT " + REFUND_COLUMNS + " FROM refunds WHERE order_id = ? ORDER BY created_at, id",
+				(rs, row) -> refund(rs), orderId);
+	}
+
+	static final String REFUND_COLUMNS = """
+			id, payment_id, order_id, amount, currency, status::text AS status, request_reason,
+			requested_by_type::text AS requested_by_type, decided_by, decided_at, decision_note,
+			external_reference, completed_at, created_at""";
+
+	static Refund refund(ResultSet rs) throws SQLException {
+		return new Refund(rs.getObject("id", UUID.class), rs.getObject("payment_id", UUID.class),
+				rs.getObject("order_id", UUID.class), Money.of(rs.getBigDecimal("amount")),
+				rs.getString("currency").strip(), rs.getString("status"), rs.getString("request_reason"),
+				rs.getString("requested_by_type"), rs.getObject("decided_by", UUID.class), instant(rs, "decided_at"),
+				rs.getString("decision_note"), rs.getString("external_reference"), instant(rs, "completed_at"),
+				rs.getTimestamp("created_at").toInstant());
 	}
 
 	private static java.time.@Nullable Instant instant(ResultSet rs, String column) throws SQLException {
@@ -146,6 +152,7 @@ public class AdminPaymentQueries {
 				rs.getString("failure_reason"), rs.getObject("verified_by", UUID.class),
 				verifiedAt == null ? null : verifiedAt.toInstant(), rs.getString("verification_note"),
 				rs.getObject("m_id") == null ? null : submission(rs, "m_", id),
+				Money.of(rs.getBigDecimal("refunded_amount")),
 				rs.getTimestamp("created_at").toInstant());
 	}
 

@@ -7,6 +7,7 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
+import { Money } from '../../models/money';
 import { Refund } from '../../models/refund';
 import { Uuid } from '../../models/uuid';
 
@@ -14,6 +15,11 @@ export interface AdminRequestRefund$Params {
   paymentId: Uuid;
       body: {
 'reason': string;
+
+/**
+ * Partial amount (v1.2), greater than 0 and at most what is left; defaults to all of it.
+ */
+'amount'?: Money;
 }
 }
 

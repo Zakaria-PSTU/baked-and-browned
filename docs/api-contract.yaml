@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -11,6 +11,10 @@ info:
     complete order detail, customer cancellation, manual payment submission,
     delivery zones, and the admin operational APIs. No v1.0 operation, field
     or required property was removed or renamed.
+
+    v1.2 (ADR-0017), also additive: partial refunds (optional `amount` on
+    adminRequestRefund, `refundedAmount` on AdminPayment) and second-approver
+    review (the ADMIN who requested a refund never approves it).
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -987,7 +991,12 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminRequestRefund
-      summary: Open a full refund request for a SUCCEEDED payment (v1.1)
+      summary: Open a full or partial refund request for a SUCCEEDED payment (v1.1, partial v1.2)
+      description: |
+        Another ADMIN must approve the request. Refunds of a payment never exceed
+        it in total, and only one may be open (REQUESTED or APPROVED) at a time.
+        Without `amount` the request covers everything not yet refunded.
+        409 codes: PAYMENT_NOT_REFUNDABLE, REFUND_ALREADY_OPEN, REFUND_EXCEEDS_REMAINING.
       parameters:
         - {$ref: '#/components/parameters/PaymentId'}
       requestBody:
@@ -999,6 +1008,10 @@ paths:
               required: [reason]
               properties:
                 reason: {type: string, minLength: 3, maxLength: 500}
+                amount:
+                  allOf:
+                    - {$ref: '#/components/schemas/Money'}
+                  description: Partial amount (v1.2), greater than 0 and at most what is left; defaults to all of it.
       responses:
         '201':
           description: Refund requested
@@ -1008,6 +1021,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
   /admin/refunds:
     get:
       tags: [Admin]
@@ -1029,6 +1043,10 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminDecideRefund
+      description: |
+        Second approver (v1.2): the ADMIN who requested a refund may REJECT
+        (withdraw) it but never APPROVE it (409 SECOND_APPROVER_REQUIRED); the
+        decision needs an enabled ADMIN account at the time it is made.
       parameters:
         - {$ref: '#/components/parameters/RefundId'}
       requestBody:
@@ -1050,7 +1068,10 @@ paths:
       tags: [Admin]
       security: [{bearerAuth: []}]
       operationId: adminCompleteRefund
-      description: Records the external refund reference for an APPROVED refund; payment becomes REFUNDED.
+      description: |
+        Records the external refund reference for an APPROVED refund and sends the
+        customer an SMS. The payment becomes REFUNDED once its completed refunds add
+        up to the full amount; a partial refund leaves it SUCCEEDED (v1.2).
       parameters:
         - {$ref: '#/components/parameters/RefundId'}
       requestBody:
@@ -1846,6 +1867,10 @@ components:
           allOf:
             - {$ref: '#/components/schemas/ManualPaymentSubmission'}
           nullable: true
+        refundedAmount:
+          allOf:
+            - {$ref: '#/components/schemas/Money'}
+          description: Total of completed refunds (v1.2).
         createdAt: {type: string, format: date-time}
     AdminPaymentPage:
       type: object

@@ -5,6 +5,7 @@ import java.sql.Timestamp;
 import java.util.Map;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -69,7 +70,15 @@ public class OrderNotificationDelivery {
 
 	/** First attempt: fixes recipient and text. A concurrent first attempt for the same event loses quietly. */
 	private void record(OutboxMessage event, Kind kind) {
+		// Order events carry the order id; refund events the refund id, which names its order and amount.
 		UUID orderId = event.aggregateId();
+		BigDecimal refundAmount = null;
+		if (kind == Kind.REFUND_COMPLETED) {
+			Map<String, Object> refund = jdbc.queryForMap("SELECT order_id, amount FROM refunds WHERE id = ?",
+					event.aggregateId());
+			orderId = (UUID) refund.get("order_id");
+			refundAmount = (BigDecimal) refund.get("amount");
+		}
 		Map<String, Object> order = jdbc.queryForMap("""
 				SELECT o.order_number, o.user_id, o.payment_method::text AS payment_method, o.total_amount,
 				       o.status::text AS status, o.expires_at, s.start_at, s.end_at, u.phone,
@@ -79,7 +88,7 @@ public class OrderNotificationDelivery {
 				JOIN delivery_slots s ON s.id = o.delivery_slot_id
 				JOIN users u ON u.id = o.user_id
 				WHERE o.id = ?""", orderId);
-		String text = OrderNotices.text(kind, facts(kind, order));
+		String text = OrderNotices.text(kind, facts(kind, order, refundAmount));
 		jdbc.update("""
 				INSERT INTO notifications (outbox_event_id, order_id, user_id, kind, channel, recipient, body)
 				VALUES (?, ?, ?, ?, 'SMS', ?, ?)
@@ -87,7 +96,7 @@ public class OrderNotificationDelivery {
 				order.get("user_id"), kind.name(), order.get("phone"), text);
 	}
 
-	private static OrderFacts facts(Kind kind, Map<String, Object> order) {
+	private static OrderFacts facts(Kind kind, Map<String, Object> order, @Nullable BigDecimal refundAmount) {
 		// The payment deadline only matters while the order is still waiting for it.
 		Timestamp expires = (Timestamp) order.get("expires_at");
 		boolean awaitingPayment = kind == Kind.ORDER_RECEIVED && "PENDING_PAYMENT".equals(order.get("status"))
@@ -95,7 +104,7 @@ public class OrderNotificationDelivery {
 		return new OrderFacts((String) order.get("order_number"), (String) order.get("payment_method"),
 				(BigDecimal) order.get("total_amount"), ((Timestamp) order.get("start_at")).toInstant(),
 				((Timestamp) order.get("end_at")).toInstant(), awaitingPayment ? expires.toInstant() : null,
-				(BigDecimal) order.get("refund_amount"));
+				refundAmount != null ? refundAmount : (BigDecimal) order.get("refund_amount"));
 	}
 
 }

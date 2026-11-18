@@ -7,8 +7,9 @@ import com.bakedandbrowned.common.outbox.OutboxHandler;
 import com.bakedandbrowned.common.outbox.OutboxMessage;
 import com.bakedandbrowned.notification.service.OrderNotices.Kind;
 import com.bakedandbrowned.ordering.service.OrderEvents;
+import com.bakedandbrowned.payment.service.PaymentEvents;
 
-/** One outbox handler per order event, each sending the matching customer notice. */
+/** One outbox handler per order or refund event, each sending the matching customer notice. */
 @Configuration(proxyBeanMethods = false)
 class OrderNoticeHandlers {
 
@@ -35,6 +36,11 @@ class OrderNoticeHandlers {
 	@Bean
 	OutboxHandler orderExpiredNotice(OrderNotificationDelivery delivery) {
 		return new NoticeHandler(OrderEvents.EXPIRED, Kind.ORDER_EXPIRED, delivery);
+	}
+
+	@Bean
+	OutboxHandler refundCompletedNotice(OrderNotificationDelivery delivery) {
+		return new NoticeHandler(PaymentEvents.REFUND_COMPLETED, Kind.REFUND_COMPLETED, delivery);
 	}
 
 	private record NoticeHandler(String eventType, Kind kind, OrderNotificationDelivery delivery)
