@@ -35,12 +35,13 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 
 	@Test
 	void publicCatalogPathsAreNotBlockedBySecurity() throws Exception {
-		// No catalog controllers yet: reaching MVC (404) instead of 401 proves the path is public.
+		// Anonymous requests reach MVC: whatever it answers (200, or 404 for paths without a
+		// controller yet), security did not stop them with 401/403.
 		for (String path : List.of("/api/v1/categories", "/api/v1/products", "/api/v1/products/fudge-brownie",
 				"/api/v1/delivery-slots", "/api/v1/delivery-zones")) {
-			mockMvc.perform(get(path)).andExpect(status().isNotFound());
+			mockMvc.perform(get(path)).andExpect(notBlockedBySecurity());
 		}
-		mockMvc.perform(post("/api/v1/payments/webhooks/sslcommerz")).andExpect(status().isNotFound());
+		mockMvc.perform(post("/api/v1/payments/webhooks/sslcommerz")).andExpect(notBlockedBySecurity());
 		mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
 	}
 
@@ -112,6 +113,12 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 		String header = new String(java.util.Base64.getUrlDecoder().decode(session.accessToken().split("\\.")[0]),
 				java.nio.charset.StandardCharsets.UTF_8);
 		org.assertj.core.api.Assertions.assertThat(header).contains("\"kid\":\"bb-access-1\"", "\"alg\":\"RS256\"");
+	}
+
+	private static org.springframework.test.web.servlet.ResultMatcher notBlockedBySecurity() {
+		return result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+			.as("%s must not be blocked by security", result.getRequest().getRequestURI())
+			.isNotIn(401, 403);
 	}
 
 	private static JwtClaimsSet.Builder valid(Instant now) {

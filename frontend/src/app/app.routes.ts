@@ -7,7 +7,12 @@ export const routes: Routes = [
     path: '',
     pathMatch: 'full',
     title: 'Baked & Browned',
-    loadComponent: () => import('./features/home/home-page').then((m) => m.HomePage),
+    loadComponent: () => import('./features/catalog/catalog-page').then((m) => m.CatalogPage),
+  },
+  {
+    path: 'products/:slug',
+    title: 'Product · Baked & Browned',
+    loadComponent: () => import('./features/catalog/product-page').then((m) => m.ProductPage),
   },
   {
     path: 'login',
