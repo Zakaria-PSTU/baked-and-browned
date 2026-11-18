@@ -50,3 +50,9 @@ function day(instant: Date): string {
     DAY.formatToParts(instant).find((p) => p.type === type)?.value ?? '';
   return `${part('weekday')}, ${part('day')} ${part('month')}`;
 }
+
+/** "Wed, 18 Nov, 2:05 pm" for an instant, in Dhaka. */
+export function formatDhakaDateTime(instant: string): string {
+  const at = new Date(instant);
+  return `${day(at)}, ${TIME.format(at)}`;
+}

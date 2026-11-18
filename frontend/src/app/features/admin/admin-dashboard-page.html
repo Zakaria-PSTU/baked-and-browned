@@ -44,6 +44,11 @@
             {{ t.value }}
           </p>
           <p class="mt-1 text-xs text-stone-500">{{ t.hint }}</p>
+          @if (t.link) {
+            <a [routerLink]="t.link" class="mt-2 inline-block text-sm text-amber-800 underline"
+              >Open</a
+            >
+          }
         </li>
       }
     </ul>

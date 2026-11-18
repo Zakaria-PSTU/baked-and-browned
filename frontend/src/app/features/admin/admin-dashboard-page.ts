@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { formatBdt } from '../../shared/bdt.pipe';
 import { AdminDashboardApi } from './admin-dashboard-api';
 
@@ -9,6 +10,8 @@ interface Tile {
   readonly hint: string;
   /** Needs an ADMIN's attention when non-zero. */
   readonly attention: boolean;
+  /** Where the queue is worked, if it has a screen yet. */
+  readonly link?: string;
 }
 
 /**
@@ -17,6 +20,7 @@ interface Tile {
  */
 @Component({
   selector: 'bb-admin-dashboard-page',
+  imports: [RouterLink],
   templateUrl: './admin-dashboard-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -48,7 +52,13 @@ export class AdminDashboardPage {
     return [
       tile('To prepare', String(s.pendingOrders), 'Confirmed, not started', false),
       tile('Preparing', String(s.preparingOrders), 'In the kitchen', false),
-      tile('Payments to verify', String(verification), 'Manual submissions', verification > 0),
+      tile(
+        'Payments to verify',
+        String(verification),
+        'Manual submissions',
+        verification > 0,
+        '/admin/payments',
+      ),
       tile('Reconciliation', String(reconciliation), 'Open cases', reconciliation > 0),
       tile('Low stock', String(lowStock), 'Ingredients at or below threshold', lowStock > 0),
     ];
@@ -59,6 +69,6 @@ export class AdminDashboardPage {
   }
 }
 
-function tile(label: string, value: string, hint: string, attention: boolean): Tile {
-  return { label, value, hint, attention };
+function tile(label: string, value: string, hint: string, attention: boolean, link?: string): Tile {
+  return { label, value, hint, attention, link };
 }
