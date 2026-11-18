@@ -18,7 +18,7 @@ class DatabaseMigrationTests extends AbstractSchemaTest {
 
 		assertThat(history).extracting(row -> row.get("script")).containsExactly(
 				"V1__init.sql", "V2__foundation_hardening.sql", "V3__delivery_zones.sql",
-				"V4__ordering_policy.sql", "V5__payments_manual_refunds.sql");
+				"V4__ordering_policy.sql", "V5__payments_manual_refunds.sql", "V6__notifications.sql");
 		assertThat(history).allSatisfy(row -> assertThat(row.get("success")).isEqualTo(true));
 	}
 
@@ -48,7 +48,7 @@ class DatabaseMigrationTests extends AbstractSchemaTest {
 		Integer seededBeforeTests = jdbc.queryForObject("""
 				SELECT count(*) FROM flyway_schema_history h
 				WHERE h.script LIKE 'V%' AND h.success""", Integer.class);
-		assertThat(seededBeforeTests).isEqualTo(5);
+		assertThat(seededBeforeTests).isEqualTo(6);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isZero();
 	}
