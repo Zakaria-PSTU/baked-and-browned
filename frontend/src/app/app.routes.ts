@@ -26,6 +26,13 @@ export const routes: Routes = [
     loadComponent: () => import('./features/checkout/checkout-page').then((m) => m.CheckoutPage),
   },
   {
+    path: 'orders',
+    pathMatch: 'full',
+    title: 'My orders · Baked & Browned',
+    canMatch: [requireSignedIn],
+    loadComponent: () => import('./features/orders/my-orders-page').then((m) => m.MyOrdersPage),
+  },
+  {
     path: 'orders/:orderId',
     title: 'Your order · Baked & Browned',
     canMatch: [requireSignedIn],

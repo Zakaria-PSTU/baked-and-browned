@@ -21,6 +21,13 @@
               >Dashboard</a
             >
           }
+          <a
+            routerLink="/orders"
+            routerLinkActive="font-semibold"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="hover:underline"
+            >My orders</a
+          >
           <a routerLink="/account" routerLinkActive="font-semibold" class="hover:underline">{{
             u.fullName
           }}</a>

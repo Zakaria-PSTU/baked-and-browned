@@ -7,6 +7,7 @@ import {
   listDeliverySlots,
   listDeliveryZones,
   listManualPaymentAccounts,
+  listMyOrders,
   placeOrder,
   quoteCheckout,
   submitManualPayment,
@@ -19,6 +20,7 @@ import type {
   ManualPaymentAccount,
   ManualPaymentProvider,
   ManualPaymentSubmission,
+  Order,
   OrderDetail,
   PlaceOrderRequest,
 } from '../../core/api/generated/models';
@@ -44,6 +46,11 @@ export class CheckoutApi {
 
   place(body: PlaceOrderRequest): Observable<OrderDetail> {
     return placeOrder(this.http, this.rootUrl, { body }).pipe(map((r) => r.body));
+  }
+
+  /** The customer's own orders, newest first (the server lists the latest 200). */
+  myOrders(): Observable<Order[]> {
+    return listMyOrders(this.http, this.rootUrl).pipe(map((r) => r.body));
   }
 
   order(orderId: string): Observable<OrderDetail> {

@@ -2,22 +2,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import type { OrderDetail, OrderStatus } from '../../core/api/generated/models';
+import type { OrderDetail } from '../../core/api/generated/models';
 import { BdtPipe } from '../../shared/bdt.pipe';
 import { formatDhakaRange } from '../../shared/dhaka-time';
 import { CheckoutApi } from '../checkout/checkout-api';
 import { ManualPaymentPanel } from './manual-payment-panel';
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING_PAYMENT: 'Waiting for payment',
-  CONFIRMED: 'Confirmed',
-  PREPARING: 'Being baked',
-  READY: 'Ready',
-  OUT_FOR_DELIVERY: 'Out for delivery',
-  DELIVERED: 'Delivered',
-  CANCELLED: 'Cancelled',
-  EXPIRED: 'Expired',
-};
+import { statusLabel } from './order-status';
 
 /**
  * One of the customer's orders, as snapshotted when it was placed. Messages and names are shown
@@ -58,6 +48,6 @@ export class OrderPage {
     ) {
       return 'Checking your payment';
     }
-    return STATUS_LABELS[order.status] ?? order.status;
+    return statusLabel(order.status);
   }
 }
