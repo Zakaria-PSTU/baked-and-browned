@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { OrderDetail } from '../../core/api/generated/models';
+import { ExternalNavigation } from '../../shared/external-navigation';
 import { OrderPage } from './order-page';
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
@@ -142,5 +143,79 @@ describe('OrderPage cancellation', () => {
     expect(root.querySelector('[data-testid="refund-note"]')?.textContent).toContain(
       'processing a refund',
     );
+  });
+});
+
+describe('OrderPage online payment', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  const pending = (status: OrderDetail['payment']['status'] = 'PENDING') =>
+    detail({
+      status: 'PENDING_PAYMENT',
+      paymentMethod: 'ONLINE',
+      payment: { method: 'ONLINE', status },
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    });
+
+  const open = async (order: OrderDetail) => {
+    const fixture = TestBed.createComponent(OrderPage);
+    fixture.componentRef.setInput('orderId', order.orderId);
+    await settle();
+    http.expectOne(`/api/v1/orders/${order.orderId}`).flush(order);
+    await fixture.whenStable();
+    return { fixture, root: fixture.nativeElement as HTMLElement };
+  };
+
+  it('sends the browser to the hosted page for the time left on the hold', async () => {
+    const go = vi.spyOn(TestBed.inject(ExternalNavigation), 'go').mockReturnValue(undefined);
+    const { fixture, root } = await open(pending());
+    expect(root.querySelector('[data-testid="time-left"]')?.textContent).toMatch(/\d+:\d{2}/);
+    expect(root.querySelector('[data-testid="attempt-failed"]')).toBeNull();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="pay-online"]')!.click();
+    await fixture.whenStable();
+    http
+      .expectOne('/api/v1/payments/o1/initiate')
+      .flush({ paymentId: 'p1', checkoutUrl: 'https://sandbox.example/pay?s=1' });
+    await fixture.whenStable();
+    expect(go).toHaveBeenCalledWith('https://sandbox.example/pay?s=1');
+  });
+
+  it('offers a retry after a failed attempt and shows why a retry is refused', async () => {
+    const { fixture, root } = await open(pending('FAILED'));
+    expect(root.querySelector('[data-testid="attempt-failed"]')).not.toBeNull();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="pay-online"]')!.click();
+    await fixture.whenStable();
+    http.expectOne('/api/v1/payments/o1/initiate').flush(
+      {
+        title: 'Conflict',
+        status: 409,
+        code: 'PAYMENT_HOLD_EXPIRED',
+        detail: 'The time to pay for this order has run out. Please place a new order.',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid="pay-error"]')?.textContent).toContain(
+      'time to pay for this order has run out',
+    );
+  });
+
+  it('says a confirmed online order is paid and offers no payment', async () => {
+    const { root } = await open(
+      detail({ paymentMethod: 'ONLINE', payment: { method: 'ONLINE', status: 'SUCCEEDED' } }),
+    );
+    expect(root.querySelector('[data-testid="online-payment"]')).toBeNull();
+    expect(root.querySelector('[data-testid="paid-online"]')).not.toBeNull();
   });
 });

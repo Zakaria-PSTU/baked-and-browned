@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import type { ManualPaymentAccount, OrderDetail } from '../../core/api/generated/models';
 import { AuthSession } from '../../core/auth/auth-session';
+import { ExternalNavigation } from '../../shared/external-navigation';
 import { CartStore } from '../cart/cart-store';
 import { OrderPage } from '../orders/order-page';
 import { forgetAttempt } from './checkout-attempt';
@@ -153,7 +154,7 @@ describe('checkout', () => {
           remainingUnits: 4,
         },
       ]);
-      http.expectOne('/api/v1/payments/manual-accounts').flush([BKASH]);
+      http.expectOne('/api/v1/payments/methods').flush({ available: ['COD', 'MANUAL', 'ONLINE'] });
       await fixture.whenStable();
     });
 
@@ -180,6 +181,67 @@ describe('checkout', () => {
       });
       await fixture.whenStable();
       expect(navigate).toHaveBeenCalledWith(['/orders', 'o1'], { queryParams: { placed: 1 } });
+    });
+
+    describe('online payment', () => {
+      const placeOnline = async () => {
+        await type('#area', 'DHANMONDI', 'change');
+        await type('#address', 'House 12, Road 5');
+        field<HTMLInputElement>('input[name="slot"]').click();
+        field<HTMLInputElement>('input[value="ONLINE"]').click();
+        await fixture.whenStable();
+        expect(field('[data-testid="online-hint"]').textContent).toContain('15 minutes');
+        button('Review total').click();
+        http
+          .expectOne('/api/v1/checkout/quote')
+          .flush({ subtotal: 4430, deliveryFee: 60, discount: 0, total: 4490, currency: 'BDT' });
+        await fixture.whenStable();
+        button('pay ৳4,490.00 online').click();
+        const placed = http.expectOne('/api/v1/orders');
+        expect(placed.request.body).toMatchObject({ paymentMethod: 'ONLINE' });
+        placed.flush(order({ status: 'PENDING_PAYMENT', paymentMethod: 'ONLINE' }), {
+          status: 201,
+          statusText: 'Created',
+        });
+        await fixture.whenStable();
+        const initiate = http.expectOne('/api/v1/payments/o1/initiate');
+        expect(initiate.request.method).toBe('POST');
+        return initiate;
+      };
+
+      it('places the order, then sends the browser to the hosted payment page', async () => {
+        const go = vi.spyOn(TestBed.inject(ExternalNavigation), 'go').mockReturnValue(undefined);
+        const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        const initiate = await placeOnline();
+        expect(field('[data-testid="redirecting"]').textContent).toContain('Your order is placed');
+
+        initiate.flush({ paymentId: 'p1', checkoutUrl: 'https://sandbox.example/pay?s=1' });
+        await fixture.whenStable();
+        expect(go).toHaveBeenCalledWith('https://sandbox.example/pay?s=1');
+        expect(navigate).not.toHaveBeenCalled();
+        expect(cart.items()).toEqual([]);
+      });
+
+      it('shows the placed order when the payment page cannot be opened', async () => {
+        const go = vi.spyOn(TestBed.inject(ExternalNavigation), 'go');
+        const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        const initiate = await placeOnline();
+        initiate.flush(
+          { title: 'Service Unavailable', status: 503, code: 'GATEWAY_UNAVAILABLE' },
+          { status: 503, statusText: 'Service Unavailable' },
+        );
+        await fixture.whenStable();
+        expect(go).not.toHaveBeenCalled();
+        expect(navigate).toHaveBeenCalledWith(['/orders', 'o1'], { queryParams: { placed: 1 } });
+      });
+
+      it('never follows a checkout URL that is not a web address', async () => {
+        const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        const initiate = await placeOnline();
+        initiate.flush({ paymentId: 'p1', checkoutUrl: 'javascript:alert(1)' });
+        await fixture.whenStable();
+        expect(navigate).toHaveBeenCalledWith(['/orders', 'o1'], { queryParams: { placed: 1 } });
+      });
     });
 
     it('quotes, then places a cash-on-delivery order idempotently', async () => {
@@ -289,22 +351,39 @@ describe('checkout', () => {
     });
   });
 
-  it('offers only cash on delivery when no transfer account is configured', async () => {
-    TestBed.inject(CartStore).add({
-      slug: 'cookies',
-      productName: 'Cookies',
-      choices: [],
-      line: { productId: 'c', quantity: 1, selectedOptionIds: [], customTexts: {} },
+  describe('offered methods', () => {
+    const openWith = async (
+      respond: (req: ReturnType<HttpTestingController['expectOne']>) => void,
+    ) => {
+      TestBed.inject(CartStore).add({
+        slug: 'cookies',
+        productName: 'Cookies',
+        choices: [],
+        line: { productId: 'c', quantity: 1, selectedOptionIds: [], customTexts: {} },
+      });
+      const fixture = TestBed.createComponent(CheckoutPage);
+      await settle();
+      http.expectOne('/api/v1/delivery-zones').flush([]);
+      http.expectOne((r) => r.url === '/api/v1/delivery-slots').flush([]);
+      respond(http.expectOne('/api/v1/payments/methods'));
+      await fixture.whenStable();
+      return fixture.nativeElement as HTMLElement;
+    };
+
+    it('offers only what the server says is available', async () => {
+      const root = await openWith((req) => req.flush({ available: ['COD'] }));
+      expect(root.querySelector('input[value="COD"]')).not.toBeNull();
+      expect(root.querySelector('input[value="MANUAL"]')).toBeNull();
+      expect(root.querySelector('input[value="ONLINE"]')).toBeNull();
     });
-    const fixture = TestBed.createComponent(CheckoutPage);
-    await settle();
-    http.expectOne('/api/v1/delivery-zones').flush([]);
-    http.expectOne((r) => r.url === '/api/v1/delivery-slots').flush([]);
-    http.expectOne('/api/v1/payments/manual-accounts').flush([]);
-    await fixture.whenStable();
-    const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('input[value="COD"]')).not.toBeNull();
-    expect(root.querySelector('input[value="MANUAL"]')).toBeNull();
+
+    it('falls back to cash on delivery when the methods cannot be loaded', async () => {
+      const root = await openWith((req) =>
+        req.flush(null, { status: 500, statusText: 'Server Error' }),
+      );
+      expect(root.querySelector('input[value="COD"]')).not.toBeNull();
+      expect(root.querySelector('input[value="ONLINE"]')).toBeNull();
+    });
   });
 
   describe('manual payment', () => {

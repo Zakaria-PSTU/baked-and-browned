@@ -1,11 +1,13 @@
 package com.bakedandbrowned.payment.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
 import com.bakedandbrowned.common.value.Money;
+import com.bakedandbrowned.ordering.dto.OrderDtos.PaymentMethod;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +33,13 @@ public final class PaymentDtos {
 			REINSTATE, REQUEST_REFUND, NO_ACTION
 		}
 
+	}
+
+	/**
+	 * Contract {@code PaymentMethods} (v1.4): what checkout can offer in this deployment, in display
+	 * order. COD always; MANUAL with configured receiving accounts; ONLINE with an active gateway.
+	 */
+	public record PaymentMethods(List<PaymentMethod> available) {
 	}
 
 	/** Contract {@code initiatePayment} 200 body: where to send the customer's browser. */

@@ -33,6 +33,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/orders/my-orders-page').then((m) => m.MyOrdersPage),
   },
   {
+    // The API's payment return endpoint forwards here (app.payments.online.return-url).
+    path: 'orders/:orderId/payment',
+    title: 'Checking your payment · Baked & Browned',
+    canMatch: [requireSignedIn],
+    loadComponent: () =>
+      import('./features/orders/payment-return-page').then((m) => m.PaymentReturnPage),
+  },
+  {
     path: 'orders/:orderId',
     title: 'Your order · Baked & Browned',
     canMatch: [requireSignedIn],

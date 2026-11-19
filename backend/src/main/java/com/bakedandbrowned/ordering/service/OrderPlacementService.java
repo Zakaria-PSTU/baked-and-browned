@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.ordering.dto.OrderDtos.OrderDetail;
+import com.bakedandbrowned.ordering.dto.OrderDtos.PaymentMethod;
 import com.bakedandbrowned.ordering.dto.OrderDtos.PlaceOrderRequest;
+import com.bakedandbrowned.payment.gateway.PaymentGateways;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -22,6 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <li>Idempotency first: an existing order for {@code (user, idempotencyKey)} with the same request
  * hash is returned as is (201, nothing new), with a different hash is 422
  * {@code IDEMPOTENCY_KEY_REUSED}. Replays never re-price, so a later price change cannot break them.</li>
+ * <li>An ONLINE order needs an active payment gateway (409 {@code ONLINE_PAYMENT_UNAVAILABLE}), so no
+ * stock or slot is held for an order that could never be paid.</li>
  * <li>Re-price and validate the cart against current data ({@link CartPricer}, 422s).</li>
  * <li>Write order, snapshots and reservations in one transaction ({@link OrderWriter}, 409 when the
  * last capacity or stock was taken first).</li>
@@ -35,6 +39,9 @@ public class OrderPlacementService {
 
 	public static final String IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED";
 
+	/** Same code as {@code initiatePayment} uses when the gateway is gone by the time the customer pays. */
+	public static final String ONLINE_PAYMENT_UNAVAILABLE = "ONLINE_PAYMENT_UNAVAILABLE";
+
 	private final CartPricer pricer;
 
 	private final OrderWriter writer;
@@ -47,14 +54,17 @@ public class OrderPlacementService {
 
 	private final Clock clock;
 
+	private final PaymentGateways gateways;
+
 	OrderPlacementService(CartPricer pricer, OrderWriter writer, OrderQueryService queries, JdbcTemplate jdbc,
-			JsonMapper json, Clock clock) {
+			JsonMapper json, Clock clock, PaymentGateways gateways) {
 		this.pricer = pricer;
 		this.writer = writer;
 		this.queries = queries;
 		this.jdbc = jdbc;
 		this.json = json;
 		this.clock = clock;
+		this.gateways = gateways;
 	}
 
 	public OrderDetail place(UUID userId, PlaceOrderRequest request) {
@@ -62,6 +72,10 @@ public class OrderPlacementService {
 		OrderDetail existing = replay(userId, request.idempotencyKey(), hash);
 		if (existing != null) {
 			return existing;
+		}
+		if (request.paymentMethod() == PaymentMethod.ONLINE && gateways.active().isEmpty()) {
+			throw ApiException.conflict(ONLINE_PAYMENT_UNAVAILABLE,
+					"Online payment is not available right now. Please choose another payment method.");
 		}
 		Instant now = clock.instant();
 		PricedCart cart = pricer.price(request.cart(), now);

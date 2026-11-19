@@ -5,10 +5,12 @@ import { ApiConfiguration } from '../../core/api/generated/api-configuration';
 import {
   cancelMyOrder,
   getOrder,
+  initiatePayment,
   listDeliverySlots,
   listDeliveryZones,
   listManualPaymentAccounts,
   listMyOrders,
+  listPaymentMethods,
   placeOrder,
   quoteCheckout,
   submitManualPayment,
@@ -23,6 +25,7 @@ import type {
   ManualPaymentSubmission,
   Order,
   OrderDetail,
+  PaymentMethod,
   PlaceOrderRequest,
 } from '../../core/api/generated/models';
 
@@ -67,6 +70,21 @@ export class CheckoutApi {
       orderId,
       body: reason ? { reason } : undefined,
     }).pipe(map((r) => r.body));
+  }
+
+  /** What checkout can offer in this deployment, in display order (contract v1.4). */
+  paymentMethods(): Observable<PaymentMethod[]> {
+    return listPaymentMethods(this.http, this.rootUrl).pipe(map((r) => r.body.available));
+  }
+
+  /**
+   * Opens (or reopens) the hosted payment page of an ONLINE order. The URL is only where to send
+   * the browser; the order is paid once the provider's callback is verified server to server.
+   */
+  startOnlinePayment(orderId: string): Observable<string> {
+    return initiatePayment(this.http, this.rootUrl, { orderId }).pipe(
+      map((r) => r.body.checkoutUrl),
+    );
   }
 
   /** Where to send a MANUAL payment; empty when it is not offered (ADR-0022). */

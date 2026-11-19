@@ -8,6 +8,7 @@ import { formatDhakaRange } from '../../shared/dhaka-time';
 import { CheckoutApi } from '../checkout/checkout-api';
 import { CancelOrderPanel } from './cancel-order-panel';
 import { ManualPaymentPanel } from './manual-payment-panel';
+import { OnlinePaymentPanel } from './online-payment-panel';
 import { statusLabel } from './order-status';
 
 /**
@@ -16,7 +17,7 @@ import { statusLabel } from './order-status';
  */
 @Component({
   selector: 'bb-order-page',
-  imports: [RouterLink, BdtPipe, ManualPaymentPanel, CancelOrderPanel],
+  imports: [RouterLink, BdtPipe, ManualPaymentPanel, OnlinePaymentPanel, CancelOrderPanel],
   templateUrl: './order-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

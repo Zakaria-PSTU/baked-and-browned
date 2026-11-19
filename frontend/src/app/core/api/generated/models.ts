@@ -51,6 +51,7 @@ export type { OrderPaymentSummary } from './models/order-payment-summary';
 export type { OrderStatus } from './models/order-status';
 export type { OrderStatusEvent } from './models/order-status-event';
 export type { PaymentMethod } from './models/payment-method';
+export type { PaymentMethods } from './models/payment-methods';
 export type { PaymentStatus } from './models/payment-status';
 export type { PaymentVerificationRequest } from './models/payment-verification-request';
 export type { PlaceOrderRequest } from './models/place-order-request';

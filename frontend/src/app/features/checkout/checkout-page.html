@@ -3,7 +3,12 @@
 </p>
 <h1 class="mt-4 text-2xl font-semibold tracking-tight">Checkout</h1>
 
-@if (cart.items().length === 0) {
+@if (redirecting()) {
+  <section class="py-10 text-center" aria-live="polite" data-testid="redirecting">
+    <p class="font-medium">Your order is placed.</p>
+    <p class="mt-2 text-stone-600">Taking you to the secure payment page…</p>
+  </section>
+} @else if (cart.items().length === 0) {
   <section class="py-10 text-center">
     <p class="text-stone-600">Your cart is empty.</p>
     <a routerLink="/" class="mt-4 inline-block text-amber-800 underline">Browse the menu</a>
@@ -165,7 +170,24 @@
             </p>
           }
         }
-        <p class="mt-1 text-xs text-stone-500">Card payment is coming soon.</p>
+        @if (onlineOffered()) {
+          <label class="mt-1 flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="payment"
+              value="ONLINE"
+              [checked]="paymentMethod() === 'ONLINE'"
+              (change)="choosePayment('ONLINE')"
+            />
+            Card or mobile wallet, online
+          </label>
+          @if (paymentMethod() === 'ONLINE') {
+            <p class="mt-1 text-xs text-stone-600" data-testid="online-hint">
+              After placing the order you go to our payment provider's secure page and have 15
+              minutes to pay. We confirm the order once the provider confirms the payment to us.
+            </p>
+          }
+        }
       </fieldset>
 
       @if (error(); as message) {
@@ -229,7 +251,9 @@
               ? 'Placing your order…'
               : paymentMethod() === 'COD'
                 ? 'Place order · pay ' + (q.total | bdt) + ' on delivery'
-                : 'Place order · then transfer ' + (q.total | bdt)
+                : paymentMethod() === 'ONLINE'
+                  ? 'Place order · pay ' + (q.total | bdt) + ' online'
+                  : 'Place order · then transfer ' + (q.total | bdt)
           }}
         </button>
       } @else {

@@ -15,6 +15,7 @@ import type {
   CheckoutQuote,
   CheckoutQuoteRequest,
   DeliveryZone,
+  PaymentMethod,
 } from '../../core/api/generated/models';
 import { AuthSession } from '../../core/auth/auth-session';
 import { userMessage } from '../../core/http/problem';
@@ -22,6 +23,7 @@ import { BD_MOBILE_PATTERN, normalizeBdMobile } from '../auth/phone';
 import { CartStore } from '../cart/cart-store';
 import { BdtPipe, formatBdt } from '../../shared/bdt.pipe';
 import { formatDhakaDay, formatDhakaRange, nextDhakaDates } from '../../shared/dhaka-time';
+import { ExternalNavigation } from '../../shared/external-navigation';
 import { CheckoutApi } from './checkout-api';
 import { forgetAttempt, idempotencyKeyFor } from './checkout-attempt';
 
@@ -30,8 +32,8 @@ export const BOOKING_DAYS = 14;
 
 /**
  * Checkout: delivery details, a slot, then a server quote the customer confirms before placing
- * the order, paid cash on delivery or by transfer. Every amount shown comes from the server; any change
- * after a quote drops it, so the total placed is always the total reviewed.
+ * the order, paid cash on delivery, by transfer or online. Every amount shown comes from the
+ * server; any change after a quote drops it, so the total placed is always the total reviewed.
  */
 @Component({
   selector: 'bb-checkout-page',
@@ -42,6 +44,7 @@ export const BOOKING_DAYS = 14;
 export class CheckoutPage {
   private readonly api = inject(CheckoutApi);
   private readonly router = inject(Router);
+  private readonly external = inject(ExternalNavigation);
   protected readonly cart = inject(CartStore);
 
   protected readonly zones = rxResource({ stream: () => this.api.zones() });
@@ -54,10 +57,14 @@ export class CheckoutPage {
   });
   protected readonly slotId = signal<string | null>(null);
 
-  /** Receiving accounts; transfer is offered only when at least one is configured (ADR-0022). */
-  protected readonly manualAccounts = rxResource({ stream: () => this.api.manualAccounts() });
-  protected readonly manualOffered = computed(() => (this.manualAccounts.value() ?? []).length > 0);
-  protected readonly paymentMethod = signal<'COD' | 'MANUAL'>('COD');
+  /**
+   * What the server offers here (contract v1.4): transfer with configured receiving accounts
+   * (ADR-0022), online with an active gateway. Until it answers, or if it fails, only cash.
+   */
+  protected readonly methods = rxResource({ stream: () => this.api.paymentMethods() });
+  protected readonly manualOffered = computed(() => this.offered('MANUAL'));
+  protected readonly onlineOffered = computed(() => this.offered('ONLINE'));
+  protected readonly paymentMethod = signal<PaymentMethod>('COD');
 
   protected readonly form = new FormGroup({
     name: new FormControl('', {
@@ -76,6 +83,8 @@ export class CheckoutPage {
   /** The server's quote for exactly the request shown; cleared by any change. */
   protected readonly quote = signal<CheckoutQuote | null>(null);
   protected readonly busy = signal(false);
+  /** The order is placed and the browser is on its way to the payment page. */
+  protected readonly redirecting = signal(false);
   protected readonly error = signal<string | null>(null);
 
   protected readonly formatDay = formatDhakaDay;
@@ -102,7 +111,11 @@ export class CheckoutPage {
     return `${zone.name} · delivery ${formatBdt(zone.deliveryFee)}${minimum}`;
   }
 
-  protected choosePayment(method: 'COD' | 'MANUAL'): void {
+  private offered(method: PaymentMethod): boolean {
+    return this.methods.hasValue() && this.methods.value().includes(method);
+  }
+
+  protected choosePayment(method: PaymentMethod): void {
     this.paymentMethod.set(method);
     this.error.set(null);
   }
@@ -155,7 +168,11 @@ export class CheckoutPage {
         next: (order) => {
           forgetAttempt();
           this.cart.clear();
-          void this.router.navigate(['/orders', order.orderId], { queryParams: { placed: 1 } });
+          if (order.paymentMethod === 'ONLINE') {
+            this.startOnlinePayment(order.orderId);
+          } else {
+            this.showPlaced(order.orderId);
+          }
         },
         error: (err: unknown) => {
           // A slot or stock change since the quote makes it stale; price again before retrying.
@@ -163,6 +180,28 @@ export class CheckoutPage {
           this.error.set(userMessage(err, 'We could not place your order. Please try again.'));
         },
       });
+  }
+
+  private showPlaced(orderId: string): void {
+    void this.router.navigate(['/orders', orderId], { queryParams: { placed: 1 } });
+  }
+
+  /**
+   * Straight on to the hosted payment page. The order is placed either way, so if the page cannot
+   * be opened the order page shows it with a button to try again.
+   */
+  private startOnlinePayment(orderId: string): void {
+    this.redirecting.set(true);
+    this.api.startOnlinePayment(orderId).subscribe({
+      next: (url) => {
+        try {
+          this.external.go(url);
+        } catch {
+          this.showPlaced(orderId);
+        }
+      },
+      error: () => this.showPlaced(orderId),
+    });
   }
 
   /** The request, or null (marking fields) while something is missing or invalid. */
