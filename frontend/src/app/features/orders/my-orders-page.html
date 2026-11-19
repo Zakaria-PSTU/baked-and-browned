@@ -1,0 +1,28 @@
+<h1 class="text-2xl font-semibold tracking-tight">My orders</h1>
+
+@if (orders.error()) {
+  <p class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+    We could not load your orders. Please try again in a moment.
+  </p>
+} @else if (orders.hasValue()) {
+  @if (orders.value().length === 0) {
+    <section class="py-10 text-center" data-testid="no-orders">
+      <p class="text-stone-600">You have not ordered anything yet.</p>
+      <a routerLink="/" class="mt-4 inline-block text-amber-800 underline">Browse the menu</a>
+    </section>
+  } @else {
+    @if (current().length > 0) {
+      <h2 class="mt-6 text-sm font-semibold tracking-wide text-stone-600 uppercase">In progress</h2>
+      <bb-order-list [orders]="current()" data-testid="current" />
+    }
+    @if (past().length > 0) {
+      <h2 class="mt-8 text-sm font-semibold tracking-wide text-stone-600 uppercase">Past orders</h2>
+      <bb-order-list [orders]="past()" data-testid="past" />
+    }
+    @if (truncated()) {
+      <p class="mt-4 text-sm text-stone-500">Showing your latest {{ listed }} orders only.</p>
+    }
+  }
+} @else {
+  <p class="mt-6 text-stone-600" aria-live="polite">Loading…</p>
+}

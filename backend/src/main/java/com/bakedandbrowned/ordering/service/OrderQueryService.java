@@ -127,7 +127,7 @@ public class OrderQueryService {
 		jdbc.query("""
 				SELECT c.order_item_id, c.group_id, c.group_name, c.option_id, c.option_name, c.text_value, c.price_delta
 				FROM order_item_customizations c JOIN order_items i ON i.id = c.order_item_id
-				WHERE i.order_id = ? ORDER BY c.group_name, c.option_name, c.id""", rs -> {
+				WHERE i.order_id = ? ORDER BY c.order_item_id, c.display_order, c.group_name, c.option_name, c.id""", rs -> {
 			byItem.computeIfAbsent(rs.getObject("order_item_id", UUID.class), id -> new ArrayList<>())
 				.add(new CustomizationSnapshot(rs.getObject("group_id", UUID.class), rs.getString("group_name"),
 						rs.getObject("option_id", UUID.class), rs.getString("option_name"), rs.getString("text_value"),

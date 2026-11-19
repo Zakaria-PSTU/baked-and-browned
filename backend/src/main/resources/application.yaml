@@ -73,6 +73,16 @@ app:
       manual-review-window: 6h
       manual-review-slot-margin: 2h
   payments:
+    manual:
+      # Receiving accounts shown to customers paying by transfer (ADR-0011, ADR-0022). Empty: MANUAL is not
+      # offered at checkout. Business-published details, set per deployment, e.g.
+      #   accounts:
+      #     - provider: BKASH
+      #       label: bKash (Merchant)
+      #       account-name: Baked & Browned
+      #       account-number: 01XXXXXXXXX
+      #       note: Use "Payment", not "Send Money".
+      accounts: []
     proof-storage:
       # Private volume outside any web root, backed up with the database. Set
       # APP_PAYMENTS_PROOF_STORAGE_DIRECTORY in deployments.

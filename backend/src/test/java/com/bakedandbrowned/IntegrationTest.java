@@ -21,7 +21,11 @@ import org.springframework.test.context.ActiveProfiles;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @SpringBootTest(properties = { "app.security.jwt.allow-ephemeral-key=true", "app.scheduling.enabled=false",
-		"app.payments.proof-storage.directory=target/test-payment-proofs" })
+		"app.payments.proof-storage.directory=target/test-payment-proofs",
+		"app.payments.manual.accounts[0].provider=BKASH", "app.payments.manual.accounts[0].label=bKash (Merchant)",
+		"app.payments.manual.accounts[0].account-name=Baked & Browned",
+		"app.payments.manual.accounts[0].account-number=01700000000",
+		"app.payments.manual.accounts[0].note=Use Payment, not Send Money." })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)

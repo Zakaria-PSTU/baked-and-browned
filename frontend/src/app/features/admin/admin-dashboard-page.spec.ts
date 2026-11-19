@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import type { DashboardSummary } from './admin-dashboard-api';
 import { AdminDashboardPage } from './admin-dashboard-page';
 
@@ -13,7 +14,7 @@ describe('AdminDashboardPage', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -48,6 +49,13 @@ describe('AdminDashboardPage', () => {
       (t) => t.querySelector('p')?.textContent,
     );
     expect(flagged).toEqual(['Payments to verify', 'Low stock']);
+    // Only queues with a screen link to it.
+    const links = [...el.querySelectorAll('li a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual([
+      '/admin/orders?status=CONFIRMED',
+      '/admin/orders?status=PREPARING',
+      '/admin/payments',
+    ]);
   });
 
   it('treats the optional figures as zero when absent', async () => {

@@ -1,0 +1,107 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { Observable, map } from 'rxjs';
+import { ApiConfiguration } from '../../core/api/generated/api-configuration';
+import {
+  cancelMyOrder,
+  getOrder,
+  initiatePayment,
+  listDeliverySlots,
+  listDeliveryZones,
+  listManualPaymentAccounts,
+  listMyOrders,
+  listPaymentMethods,
+  placeOrder,
+  quoteCheckout,
+  submitManualPayment,
+} from '../../core/api/generated/functions';
+import type {
+  CheckoutQuote,
+  CheckoutQuoteRequest,
+  DeliverySlot,
+  DeliveryZone,
+  ManualPaymentAccount,
+  ManualPaymentProvider,
+  ManualPaymentSubmission,
+  Order,
+  OrderDetail,
+  PaymentMethod,
+  PlaceOrderRequest,
+} from '../../core/api/generated/models';
+
+/** Checkout and order reads/writes (contract tags Catalog, Checkout, Orders), returning bodies. */
+@Injectable({ providedIn: 'root' })
+export class CheckoutApi {
+  private readonly http = inject(HttpClient);
+  private readonly rootUrl = inject(ApiConfiguration).rootUrl;
+
+  zones(): Observable<DeliveryZone[]> {
+    return listDeliveryZones(this.http, this.rootUrl).pipe(map((r) => r.body));
+  }
+
+  /** Bookable slots on an Asia/Dhaka calendar date (`YYYY-MM-DD`). */
+  slots(date: string): Observable<DeliverySlot[]> {
+    return listDeliverySlots(this.http, this.rootUrl, { date }).pipe(map((r) => r.body));
+  }
+
+  quote(body: CheckoutQuoteRequest): Observable<CheckoutQuote> {
+    return quoteCheckout(this.http, this.rootUrl, { body }).pipe(map((r) => r.body));
+  }
+
+  place(body: PlaceOrderRequest): Observable<OrderDetail> {
+    return placeOrder(this.http, this.rootUrl, { body }).pipe(map((r) => r.body));
+  }
+
+  /** The customer's own orders, newest first (the server lists the latest 200). */
+  myOrders(): Observable<Order[]> {
+    return listMyOrders(this.http, this.rootUrl).pipe(map((r) => r.body));
+  }
+
+  order(orderId: string): Observable<OrderDetail> {
+    return getOrder(this.http, this.rootUrl, { orderId }).pipe(map((r) => r.body));
+  }
+
+  /**
+   * Cancels the customer's own order before its deadline (ADR-0009). A paid order gets a refund
+   * request; money moves only through the ADMIN refund workflow.
+   */
+  cancel(orderId: string, reason?: string): Observable<OrderDetail> {
+    return cancelMyOrder(this.http, this.rootUrl, {
+      orderId,
+      body: reason ? { reason } : undefined,
+    }).pipe(map((r) => r.body));
+  }
+
+  /** What checkout can offer in this deployment, in display order (contract v1.4). */
+  paymentMethods(): Observable<PaymentMethod[]> {
+    return listPaymentMethods(this.http, this.rootUrl).pipe(map((r) => r.body.available));
+  }
+
+  /**
+   * Opens (or reopens) the hosted payment page of an ONLINE order. The URL is only where to send
+   * the browser; the order is paid once the provider's callback is verified server to server.
+   */
+  startOnlinePayment(orderId: string): Observable<string> {
+    return initiatePayment(this.http, this.rootUrl, { orderId }).pipe(
+      map((r) => r.body.checkoutUrl),
+    );
+  }
+
+  /** Where to send a MANUAL payment; empty when it is not offered (ADR-0022). */
+  manualAccounts(): Observable<ManualPaymentAccount[]> {
+    return listManualPaymentAccounts(this.http, this.rootUrl).pipe(map((r) => r.body));
+  }
+
+  /** Records the customer's transfer reference; it never confirms the payment (ADR-0011). */
+  submitManual(
+    orderId: string,
+    provider: ManualPaymentProvider,
+    transactionReference: string,
+    proof?: File,
+  ): Observable<ManualPaymentSubmission> {
+    return submitManualPayment(this.http, this.rootUrl, {
+      orderId,
+      body: { provider, transactionReference, proof },
+    }).pipe(map((r) => r.body));
+  }
+}

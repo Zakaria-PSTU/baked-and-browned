@@ -23,6 +23,7 @@ Version: 1.1 | Market: Dhaka, Bangladesh | Currency: BDT | Time zone: Asia/Dhaka
 - Each selectable option must be explicitly allowed for the chosen product, be active, and belong to the stated group.
 - Validate minimum/maximum selections, duplicates, inactive options and text length, and that no two chosen options form a pair the product disallows (ADR-0020).
 - A TEXT group holds one customer message, maximum 250 characters in the database; a product may set a stricter `text_max_length` (e.g. 50), which the server enforces.
+- A product shows its groups, and each group's options, in the order the admin listed them when assigning (ADR-0021); a cake reads size, flavor, frosting, toppings, message. Order snapshots keep that order.
 - Never render messages as raw HTML (web, admin views and notifications). Snapshot names, text and price deltas on order items.
 
 ## Pricing

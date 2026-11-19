@@ -1,0 +1,94 @@
+<section class="mx-auto max-w-md py-10" data-testid="fake-gateway">
+  <p
+    class="rounded-md border border-dashed border-stone-400 bg-stone-100 px-3 py-2 text-xs text-stone-700"
+  >
+    Test payment provider · development only. No money moves; this page stands in for the hosted
+    payment page.
+  </p>
+
+  @if (!session()) {
+    <p class="mt-6 text-red-800" role="alert" data-testid="no-session">
+      This link has no test payment session.
+    </p>
+  } @else if (payment.error()) {
+    <p class="mt-6 text-red-800" role="alert" data-testid="load-error">
+      This test payment could not be found. The API forgets test payments when it restarts; start
+      the payment again from your order.
+    </p>
+  } @else if (payment.hasValue()) {
+    @let p = payment.value();
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Pay {{ p.amount | bdt }}</h1>
+    <p class="mt-1 text-stone-600">
+      Order <span class="font-medium" data-testid="order-number">{{ p.orderNumber }}</span>
+    </p>
+
+    @if (p.status === 'PENDING') {
+      <div class="mt-6 flex flex-col gap-2">
+        <button
+          type="button"
+          class="rounded-md bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          [disabled]="busy()"
+          (click)="finish('SUCCEEDED')"
+          data-testid="pay"
+        >
+          Pay successfully
+        </button>
+        <button
+          type="button"
+          class="rounded-md border border-red-300 px-4 py-2 font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
+          [disabled]="busy()"
+          (click)="finish('FAILED')"
+          data-testid="fail"
+        >
+          Payment fails
+        </button>
+        <button
+          type="button"
+          class="rounded-md border border-stone-300 px-4 py-2 font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+          [disabled]="busy()"
+          (click)="finish('CANCELLED')"
+          data-testid="cancel"
+        >
+          Cancel and go back
+        </button>
+      </div>
+      <label class="mt-4 flex items-start gap-2 text-sm text-stone-700">
+        <input
+          type="checkbox"
+          class="mt-1"
+          [checked]="notifyShop()"
+          (change)="toggleNotify($event)"
+          data-testid="notify-shop"
+        />
+        <span>
+          Tell the shop (send the provider's callback). Untick to lose it and leave the payment to
+          reconciliation.
+        </span>
+      </label>
+    } @else {
+      <p class="mt-6 text-stone-700" data-testid="finished">
+        This test payment already ended: {{ p.status.toLowerCase() }}.
+      </p>
+      <button
+        type="button"
+        class="mt-3 text-amber-800 underline"
+        (click)="back(p.returnUrl)"
+        data-testid="return"
+      >
+        Back to the shop
+      </button>
+    }
+  } @else {
+    <p class="mt-6 text-stone-600" aria-live="polite">Loading the test payment…</p>
+  }
+
+  @if (error(); as message) {
+    <p
+      class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800"
+      role="alert"
+      data-testid="finish-error"
+    >
+      {{ message }}
+    </p>
+  }
+</section>

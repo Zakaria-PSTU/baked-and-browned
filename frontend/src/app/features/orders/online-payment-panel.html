@@ -1,0 +1,45 @@
+<section
+  class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"
+  aria-labelledby="online-pay-heading"
+  data-testid="online-payment"
+>
+  <h2 id="online-pay-heading" class="font-medium">Pay {{ order().total | bdt }} online</h2>
+  @if (lastAttemptFailed()) {
+    <p class="mt-1 text-red-800" data-testid="attempt-failed">
+      Your last payment attempt did not go through. You can try again.
+    </p>
+  }
+  @if (remaining(); as left) {
+    <p class="mt-1 text-amber-900" data-testid="time-left">
+      Time left to pay: <span class="font-semibold tabular-nums">{{ left }}</span>
+    </p>
+    <p class="mt-1 text-stone-700">
+      You will pay on our payment provider's secure page by card or mobile wallet, then come back
+      here.
+    </p>
+    <button
+      type="button"
+      class="mt-3 rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+      [disabled]="busy()"
+      (click)="pay()"
+      data-testid="pay-online"
+    >
+      {{ busy() ? 'Opening the payment page…' : 'Pay ' + (order().total | bdt) + ' now' }}
+    </button>
+  } @else {
+    <p class="mt-1 text-red-800" data-testid="time-up">
+      The time to pay has run out. If you already paid, we will confirm the order once the payment
+      provider tells us; otherwise please order again.
+    </p>
+  }
+
+  @if (error(); as message) {
+    <p
+      class="mt-3 rounded-md bg-red-50 px-3 py-2 text-red-800"
+      role="alert"
+      data-testid="pay-error"
+    >
+      {{ message }}
+    </p>
+  }
+</section>

@@ -7,6 +7,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -80,7 +81,8 @@ public class FakePaymentGateway implements PaymentGateway {
 	@Override
 	public HostedPaymentSession createSession(PaymentSessionRequest request) {
 		String sessionId = "fake_sess_" + UUID.randomUUID().toString().replace("-", "");
-		sessions.put(sessionId, new Session(request.orderReference(), request.amount(), GatewayPaymentStatus.PENDING, null));
+		sessions.put(sessionId, new Session(request.orderReference(), request.amount(), GatewayPaymentStatus.PENDING, null,
+				request.returnUrl()));
 		return new HostedPaymentSession(sessionId, URI.create(checkoutBaseUrl + "?session=" + sessionId));
 	}
 
@@ -122,14 +124,46 @@ public class FakePaymentGateway implements PaymentGateway {
 	/** The customer finishes on the hosted page with {@code outcome}. */
 	public void settle(String sessionId, GatewayPaymentStatus outcome) {
 		sessions.computeIfPresent(sessionId, (id, session) -> new Session(session.orderReference(), session.amount(),
-				outcome, outcome == GatewayPaymentStatus.SUCCEEDED ? "fake_txn_" + id.substring("fake_sess_".length()) : null));
+				outcome, outcome == GatewayPaymentStatus.SUCCEEDED ? "fake_txn_" + id.substring("fake_sess_".length()) : null,
+				session.returnUrl()));
 	}
 
 	/** As {@link #settle}, but the provider records {@code chargedAmount} (a tampered or misrouted payment). */
 	public void settle(String sessionId, GatewayPaymentStatus outcome, Money chargedAmount) {
 		settle(sessionId, outcome);
 		sessions.computeIfPresent(sessionId, (id, session) -> new Session(session.orderReference(), chargedAmount,
-				session.status(), session.transactionId()));
+				session.status(), session.transactionId(), session.returnUrl()));
+	}
+
+	/** What the hosted page shows for a session, or empty for an unknown one. */
+	public Optional<HostedPage> hostedPage(String sessionId) {
+		Session session = sessions.get(sessionId);
+		return session == null ? Optional.empty()
+				: Optional.of(new HostedPage(sessionId, session.orderReference(), session.amount(), session.status(),
+						session.returnUrl()));
+	}
+
+	/**
+	 * As {@link #settle}, but only while the session is still {@code PENDING}, the way a real hosted page
+	 * can be finished once.
+	 *
+	 * @return whether this call finished it
+	 */
+	public boolean finish(String sessionId, GatewayPaymentStatus outcome) {
+		if (outcome == GatewayPaymentStatus.PENDING) {
+			throw new IllegalArgumentException("A hosted page finishes with an outcome, not PENDING");
+		}
+		boolean[] finished = { false };
+		sessions.computeIfPresent(sessionId, (id, session) -> {
+			if (session.status() != GatewayPaymentStatus.PENDING) {
+				return session;
+			}
+			finished[0] = true;
+			return new Session(session.orderReference(), session.amount(), outcome,
+					outcome == GatewayPaymentStatus.SUCCEEDED ? "fake_txn_" + id.substring("fake_sess_".length()) : null,
+					session.returnUrl());
+		});
+		return finished[0];
 	}
 
 	/** The signed callback the provider would send, claiming {@code claimedStatus}. */
@@ -149,8 +183,13 @@ public class FakePaymentGateway implements PaymentGateway {
 		}
 	}
 
+	/** A session as its hosted page sees it; {@code returnUrl} is where the browser goes when done. */
+	public record HostedPage(String sessionId, String orderReference, Money amount, GatewayPaymentStatus status,
+			URI returnUrl) {
+	}
+
 	private record Session(String orderReference, Money amount, GatewayPaymentStatus status,
-			@Nullable String transactionId) {
+			@Nullable String transactionId, URI returnUrl) {
 	}
 
 }

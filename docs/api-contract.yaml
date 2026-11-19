@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.2.0
+  version: 1.5.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -15,6 +15,17 @@ info:
     v1.2 (ADR-0017), also additive: partial refunds (optional `amount` on
     adminRequestRefund, `refundedAmount` on AdminPayment) and second-approver
     review (the ADMIN who requested a refund never approves it).
+
+    v1.3, additive: the receiving accounts for manual payment
+    (listManualPaymentAccounts, ADR-0022), and the documented meaning of list
+    order in product customization assignments (ADR-0021).
+
+    v1.4, additive: the payment methods checkout can offer (listPaymentMethods),
+    and placeOrder refusing an ONLINE order with 409 ONLINE_PAYMENT_UNAVAILABLE
+    when no payment gateway is active, before anything is reserved.
+
+    v1.5, additive: placeOrder likewise refuses a MANUAL order with 409
+    MANUAL_PAYMENT_UNAVAILABLE when no receiving accounts are configured.
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -205,7 +216,11 @@ paths:
       description: |
         Idempotent per (user, idempotencyKey). Replaying the same key with the
         same body returns the original order with 201. Reusing a key with a
-        different body returns 422 with code IDEMPOTENCY_KEY_REUSED.
+        different body returns 422 with code IDEMPOTENCY_KEY_REUSED. An ONLINE
+        order while no payment gateway is active returns 409 with code
+        ONLINE_PAYMENT_UNAVAILABLE and reserves nothing (v1.4); a MANUAL order
+        while no receiving accounts are configured returns 409 with code
+        MANUAL_PAYMENT_UNAVAILABLE and reserves nothing (v1.5).
       requestBody:
         required: true
         content:
@@ -324,6 +339,38 @@ paths:
           headers:
             Location:
               schema: {type: string, format: uri}
+  /payments/methods:
+    get:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: listPaymentMethods
+      summary: Payment methods checkout can offer (v1.4)
+      description: |
+        Fixed per deployment. COD always; MANUAL when receiving accounts are
+        configured; ONLINE when a payment gateway is active.
+      responses:
+        '200':
+          description: Available methods, in display order
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentMethods'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /payments/manual-accounts:
+    get:
+      tags: [Payments]
+      security: [{bearerAuth: []}]
+      operationId: listManualPaymentAccounts
+      summary: Where to send a MANUAL payment (v1.3, ADR-0022)
+      description: Configured per deployment. Empty when manual payment is not offered.
+      responses:
+        '200':
+          description: Receiving accounts, in the configured order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ManualPaymentAccount'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /payments/{orderId}/manual-submission:
     post:
       tags: [Payments]
@@ -599,6 +646,7 @@ paths:
       security: [{bearerAuth: []}]
       operationId: adminSetProductCustomizations
       summary: Replace the product's customization groups and allowed options (v1.1)
+      description: The array order is the order customers see the groups in, and each allowedOptionIds order is the order of that group's options (ADR-0021).
       parameters:
         - {$ref: '#/components/parameters/ProductId'}
       requestBody:
@@ -1584,7 +1632,7 @@ components:
         allowedOptionIds:
           type: array
           uniqueItems: true
-          description: Must belong to the group; empty for TEXT groups.
+          description: Must belong to the group; empty for TEXT groups. Listed in display order (ADR-0021).
           items: {$ref: '#/components/schemas/Uuid'}
         textMaxLength: {type: integer, minimum: 1, maximum: 250, nullable: true}
     Product:
@@ -1903,7 +1951,7 @@ components:
     OrderItemCustomization:
       type: object
       required: [groupId, groupName, priceDelta]
-      description: Immutable snapshot; text is plain text and must be rendered escaped.
+      description: Immutable snapshot; text is plain text and must be rendered escaped. Listed in the order shown when the order was placed (ADR-0021).
       properties:
         groupId: {$ref: '#/components/schemas/Uuid'}
         groupName: {type: string}
@@ -2003,6 +2051,24 @@ components:
           nullable: true
         reason: {type: string, nullable: true}
         at: {type: string, format: date-time}
+    PaymentMethods:
+      type: object
+      description: The payment methods checkout can offer in this deployment (v1.4).
+      required: [available]
+      properties:
+        available:
+          type: array
+          items: {$ref: '#/components/schemas/PaymentMethod'}
+    ManualPaymentAccount:
+      type: object
+      required: [provider, label, accountName, accountNumber]
+      description: A business receiving account for MANUAL payments (v1.3, ADR-0022).
+      properties:
+        provider: {$ref: '#/components/schemas/ManualPaymentProvider'}
+        label: {type: string, maxLength: 80}
+        accountName: {type: string, maxLength: 120}
+        accountNumber: {type: string, maxLength: 60}
+        note: {type: string, maxLength: 300, nullable: true}
     ManualPaymentSubmission:
       type: object
       required: [id, paymentId, provider, transactionReference, status, hasProof, createdAt]
