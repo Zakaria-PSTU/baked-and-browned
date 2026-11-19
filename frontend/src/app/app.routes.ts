@@ -1,3 +1,4 @@
+import { isDevMode } from '@angular/core';
 import { Routes } from '@angular/router';
 import { requireAdmin, requireSignedIn, requireSignedOut } from './core/auth/auth.guards';
 
@@ -91,6 +92,14 @@ export const routes: Routes = [
     canMatch: [requireAdmin],
     loadComponent: () =>
       import('./features/admin/admin-dashboard-page').then((m) => m.AdminDashboardPage),
+  },
+  {
+    // The fake gateway's hosted page (app.payments.fake.checkout-base-url). Development builds
+    // only; the API serves its endpoints only under the dev and test profiles.
+    path: 'dev/fake-gateway',
+    title: 'Test payment · Baked & Browned',
+    canMatch: [() => isDevMode(), requireSignedIn],
+    loadComponent: () => import('./features/dev/fake-gateway-page').then((m) => m.FakeGatewayPage),
   },
   {
     path: '**',
