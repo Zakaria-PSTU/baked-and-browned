@@ -7,6 +7,10 @@ description: Launch the Baked & Browned API (dev profile, throwaway Testcontaine
 
 Verified on Windows 11 with Git Bash, Docker Desktop, Node 24, JDK 25 and installed Google Chrome.
 
+The online payment scenarios need the fake gateway's dev page (`/dev/fake-gateway`, from the
+`web-dev-payment-simulator` branch). On a branch without it, steps 1 and 2 still work, but checkout
+lands on "Page not found" after placing an online order.
+
 ## 1. Start both servers (background)
 
 Ports 8080 and 4200 must be free. `S` is any scratch folder for logs.
