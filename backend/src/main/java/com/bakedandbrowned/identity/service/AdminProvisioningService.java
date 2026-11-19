@@ -1,5 +1,6 @@
 package com.bakedandbrowned.identity.service;
 
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -7,6 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,8 +35,10 @@ import com.bakedandbrowned.identity.repository.UserAccountRepository;
  * Either way the target must be a brand-new account: an existing phone or email (a customer's
  * included) is refused, so no account is ever converted to ADMIN. A transaction-scoped advisory
  * lock serializes runs; the unique phone and email indexes are the backstop. Every attempt is
- * audited: a success in the same transaction as the account, a refusal in its own transaction so
- * that it survives the rollback. Passwords and secrets are never recorded.
+ * audited exactly once: a success in the same transaction as the account (if that write fails, the
+ * account is rolled back), a refusal or failure in its own transaction so that it survives the
+ * rollback. If that record cannot be written either, the attempt ends in
+ * {@link ProvisioningAuditFailure}. Passwords and secrets are never recorded.
  */
 @Service
 public class AdminProvisioningService {
@@ -45,11 +50,17 @@ public class AdminProvisioningService {
 
 	public static final String REFUSED = "admin.provisioning_refused";
 
+	/** An attempt that failed for an operational reason (database, audit write) and was rolled back. */
+	public static final String FAILED = "admin.provisioning_failed";
+
+	private static final Logger log = LoggerFactory.getLogger(AdminProvisioningService.class);
+
 	/** Audit reason codes for refusals. */
 	public static final String INVALID_NAME = "INVALID_NAME", WEAK_PASSWORD = "WEAK_PASSWORD",
 			ADMIN_ALREADY_EXISTS = "ADMIN_ALREADY_EXISTS", ACCOUNT_EXISTS = "ACCOUNT_EXISTS",
 			PROVISIONER_NOT_FOUND = "PROVISIONER_NOT_FOUND", PROVISIONER_BAD_PASSWORD = "PROVISIONER_BAD_PASSWORD",
-			PROVISIONER_NOT_ADMIN = "PROVISIONER_NOT_ADMIN", PROVISIONER_DISABLED = "PROVISIONER_DISABLED";
+			PROVISIONER_NOT_ADMIN = "PROVISIONER_NOT_ADMIN", PROVISIONER_DISABLED = "PROVISIONER_DISABLED",
+			PROVISIONING_FAILED = "PROVISIONING_FAILED";
 
 	public enum Mode {
 		FIRST, ADDITIONAL
@@ -66,6 +77,9 @@ public class AdminProvisioningService {
 	private final TransactionTemplate transaction;
 
 	private final TransactionTemplate separateTransaction;
+
+	/** Verified against when the named provisioner does not exist, so timing does not reveal it. */
+	private volatile @Nullable String timingDummyHash;
 
 	public AdminProvisioningService(UserAccountRepository users, PasswordEncoder passwordEncoder, JdbcTemplate jdbc,
 			AuditLog audit, PlatformTransactionManager transactionManager) {
@@ -95,27 +109,56 @@ public class AdminProvisioningService {
 
 	private UUID provision(Attempt attempt, @Nullable String provisionerIdentifier,
 			@Nullable String provisionerPassword, String fullName, String password) {
+		UUID id;
 		try {
-			UUID id = transaction
+			// The account and its success record commit together or not at all.
+			id = transaction
 				.execute(status -> create(attempt, provisionerIdentifier, provisionerPassword, fullName, password));
-			if (id == null) {
-				throw new IllegalStateException("Provisioning returned no account");
-			}
-			return id;
 		}
 		catch (InvalidAdminInput ex) {
-			recordRefusal(attempt, ex.code);
+			recordOutcome(attempt, REFUSED, ex.code, ex);
 			throw ex;
 		}
 		catch (ProvisioningRefused ex) {
-			recordRefusal(attempt, ex.code);
+			recordOutcome(attempt, REFUSED, ex.code, ex);
 			throw ex;
 		}
 		catch (DataIntegrityViolationException ex) {
-			// A concurrent registration won the unique phone/email index after our check.
-			recordRefusal(attempt, ACCOUNT_EXISTS);
-			throw accountExists();
+			if (!isUniqueViolation(ex)) {
+				throw failed(attempt, ex);
+			}
+			// A concurrent run or registration won the unique phone/email index after our check.
+			ProvisioningRefused refused = accountExists();
+			recordOutcome(attempt, REFUSED, ACCOUNT_EXISTS, refused);
+			throw refused;
 		}
+		catch (RuntimeException ex) {
+			// Anything else, a failed success-audit write included: rolled back, nothing created.
+			throw failed(attempt, ex);
+		}
+		if (id == null) {
+			throw failed(attempt, new IllegalStateException("Provisioning returned no account"));
+		}
+		return id;
+	}
+
+	private ProvisioningFailed failed(Attempt attempt, RuntimeException cause) {
+		ProvisioningFailed failed = new ProvisioningFailed(
+				"Provisioning failed and was rolled back; no administrator was created (" + cause.getClass().getSimpleName()
+						+ ").",
+				cause);
+		recordOutcome(attempt, FAILED, PROVISIONING_FAILED, failed);
+		return failed;
+	}
+
+	/** True only for a unique-index violation (SQLSTATE 23505), never for other integrity errors. */
+	private static boolean isUniqueViolation(DataIntegrityViolationException ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+			if (cause instanceof SQLException sql && "23505".equals(sql.getSQLState())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private UUID create(Attempt attempt, @Nullable String provisionerIdentifier, @Nullable String provisionerPassword,
@@ -157,6 +200,9 @@ public class AdminProvisioningService {
 	private void authorize(Attempt attempt, @Nullable String identifier, @Nullable String password) {
 		Optional<UserAccount> account = identifier == null ? Optional.empty() : findByIdentifier(identifier.strip());
 		if (account.isEmpty()) {
+			if (password != null && password.length() <= AuthService.MAX_PASSWORD_LENGTH) {
+				passwordEncoder.matches(password, timingDummyHash());
+			}
 			throw provisionerRejected(PROVISIONER_NOT_FOUND);
 		}
 		UserAccount provisioner = account.get();
@@ -175,19 +221,46 @@ public class AdminProvisioningService {
 		attempt.provisionerId = provisioner.getId();
 	}
 
-	private void recordRefusal(Attempt attempt, String code) {
-		separateTransaction.executeWithoutResult(status -> {
-			Map<String, Object> details = attempt.details("REFUSED");
-			if (attempt.provisionerId != null) {
-				audit.admin(attempt.provisionerId, REFUSED, "USER", null, code, details);
-			}
-			else {
-				if (attempt.claimedProvisionerId != null) {
-					details.put("claimedProvisionerId", attempt.claimedProvisionerId.toString());
+	/**
+	 * Records a refusal or failure in its own transaction, independent of the rolled-back attempt.
+	 * Exactly one record per attempt: a success is recorded only by the transaction that created the
+	 * account, and this runs only when that transaction did not commit. If even this write fails, the
+	 * operator gets a clear error and the log gets non-sensitive diagnostics (mode, reason code,
+	 * exception type), never credentials or contact details.
+	 */
+	private void recordOutcome(Attempt attempt, String action, String code, RuntimeException outcome) {
+		try {
+			separateTransaction.executeWithoutResult(status -> {
+				Map<String, Object> details = attempt.details(action.equals(FAILED) ? "FAILED" : "REFUSED");
+				if (attempt.provisionerId != null) {
+					audit.admin(attempt.provisionerId, action, "USER", null, code, details);
 				}
-				audit.system(REFUSED, "USER", null, code, details);
-			}
-		});
+				else {
+					if (attempt.claimedProvisionerId != null) {
+						details.put("claimedProvisionerId", attempt.claimedProvisionerId.toString());
+					}
+					audit.system(action, "USER", null, code, details);
+				}
+			});
+		}
+		catch (RuntimeException auditFailure) {
+			log.error("Admin provisioning ({}) ended with {} but could not be audited: {}", attempt.mode, code,
+					auditFailure.getClass().getName());
+			ProvisioningAuditFailure failure = new ProvisioningAuditFailure("Admin provisioning ended with " + code
+					+ " and could not be recorded in audit_events; nothing was created. Check the database before retrying.",
+					outcome);
+			failure.addSuppressed(auditFailure);
+			throw failure;
+		}
+	}
+
+	private String timingDummyHash() {
+		String hash = timingDummyHash;
+		if (hash == null) {
+			hash = passwordEncoder.encode(OpaqueTokens.generate());
+			timingDummyHash = hash;
+		}
+		return hash;
 	}
 
 	private Optional<UserAccount> findByIdentifier(String identifier) {
@@ -240,6 +313,8 @@ public class AdminProvisioningService {
 			String digits = phone.value();
 			details.put("targetPhone", "***" + digits.substring(Math.max(0, digits.length() - 3)));
 			details.put("targetEmailGiven", email != null);
+			// The OS account the process runs as, as the JVM reports it: not a verified operator identity.
+			details.put("processAccount", System.getProperty("user.name", "unknown"));
 			if (provisionerId != null) {
 				details.put("provisionedBy", provisionerId.toString());
 			}
@@ -262,6 +337,28 @@ public class AdminProvisioningService {
 
 		public String code() {
 			return code;
+		}
+
+	}
+
+	/** Provisioning failed for an operational reason and was rolled back. */
+	public static final class ProvisioningFailed extends IllegalStateException {
+
+		private static final long serialVersionUID = 1L;
+
+		ProvisioningFailed(String message, Throwable cause) {
+			super(message, cause);
+		}
+
+	}
+
+	/** The refusal or failure could not be audited; the attempt still created nothing. */
+	public static final class ProvisioningAuditFailure extends IllegalStateException {
+
+		private static final long serialVersionUID = 1L;
+
+		ProvisioningAuditFailure(String message, Throwable cause) {
+			super(message, cause);
 		}
 
 	}

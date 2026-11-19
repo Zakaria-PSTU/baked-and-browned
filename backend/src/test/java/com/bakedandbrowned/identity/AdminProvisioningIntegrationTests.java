@@ -3,6 +3,7 @@ package com.bakedandbrowned.identity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import com.bakedandbrowned.common.value.PhoneNumber;
 import com.bakedandbrowned.identity.service.AdminProvisioningService;
@@ -36,6 +39,10 @@ class AdminProvisioningIntegrationTests extends IdentityIntegrationTest {
 
 	@Autowired
 	private AdminProvisioningService provisioning;
+
+	@Autowired
+	@Qualifier("requestMappingHandlerMapping")
+	private RequestMappingHandlerMapping handlerMapping;
 
 	@Test
 	void provisionsTheFirstAdminOnlyOnce() {
@@ -229,6 +236,12 @@ class AdminProvisioningIntegrationTests extends IdentityIntegrationTest {
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_events WHERE action = ?", Integer.class,
 				AdminProvisioningService.REFUSED))
 			.isEqualTo(threads - 1);
+		// The bootstrap plus exactly one success for the target, naming the admin that exists.
+		assertThat(jdbc.queryForList("SELECT entity_id FROM audit_events WHERE action = ? ORDER BY created_at",
+				UUID.class, AdminProvisioningService.PROVISIONED))
+			.hasSize(2)
+			.last()
+			.isEqualTo(jdbc.queryForObject("SELECT id FROM users WHERE phone = ?", UUID.class, target.value()));
 	}
 
 	@Test
@@ -245,7 +258,138 @@ class AdminProvisioningIntegrationTests extends IdentityIntegrationTest {
 				"second@example.com", FIRST_PHONE, "argon2");
 	}
 
+	// ------------------------------------------------------------------ audit integrity
+
+	@Test
+	void aSuccessfulProvisioningWritesExactlyOneMatchingSuccessRecord() {
+		UUID first = firstAdmin();
+		UUID second = provisioning.provisionAdditionalAdmin(FIRST_PHONE, ADMIN_PASSWORD, "Second Admin",
+				PhoneNumber.of(phone()), null, NEW_PASSWORD);
+
+		assertThat(jdbc.queryForList("SELECT action, entity_id FROM audit_events ORDER BY created_at"))
+			.extracting(r -> r.get("action") + " " + r.get("entity_id"))
+			.containsExactly(AdminProvisioningService.PROVISIONED + " " + first,
+					AdminProvisioningService.PROVISIONED + " " + second);
+		assertThat(jdbc.queryForObject("SELECT details->>'processAccount' FROM audit_events WHERE entity_id = ?",
+				String.class, second))
+			.isEqualTo(System.getProperty("user.name"));
+	}
+
+	@Test
+	void aFailedSuccessAuditRollsBackTheNewAdmin() {
+		UUID first = firstAdmin();
+		String phone = phone();
+
+		withAuditOutage(AdminProvisioningService.PROVISIONED,
+				() -> assertThatIllegalStateException()
+					.isThrownBy(() -> provisioning.provisionAdditionalAdmin(FIRST_PHONE, ADMIN_PASSWORD, "Second Admin",
+							PhoneNumber.of(phone), null, NEW_PASSWORD))
+					.isInstanceOf(AdminProvisioningService.ProvisioningFailed.class)
+					.withMessageContaining("no administrator was created"));
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE phone = ?", Integer.class, phone)).isZero();
+		assertThat(jdbc.queryForList("SELECT action FROM audit_events ORDER BY created_at", String.class))
+			.containsExactly(AdminProvisioningService.PROVISIONED, AdminProvisioningService.FAILED);
+		assertThat(jdbc.queryForMap("SELECT actor_user_id, reason FROM audit_events WHERE action = ?",
+				AdminProvisioningService.FAILED))
+			.containsEntry("actor_user_id", first)
+			.containsEntry("reason", AdminProvisioningService.PROVISIONING_FAILED);
+	}
+
+	@Test
+	void aFailedRefusalAuditIsAClearOperationalError() {
+		firstAdmin();
+
+		withAuditOutage(AdminProvisioningService.REFUSED,
+				() -> assertThatIllegalStateException()
+					.isThrownBy(() -> provisioning.provisionAdditionalAdmin(FIRST_PHONE, "wrong-password-123",
+							"Second Admin", PhoneNumber.of(phone()), null, NEW_PASSWORD))
+					.isInstanceOf(AdminProvisioningService.ProvisioningAuditFailure.class)
+					.withMessageContaining("could not be recorded in audit_events")
+					.withMessageContaining(AdminProvisioningService.PROVISIONER_BAD_PASSWORD)
+					.withMessageNotContaining("wrong-password-123"));
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE role = 'ADMIN'", Integer.class)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_events WHERE action <> ?", Integer.class,
+				AdminProvisioningService.PROVISIONED))
+			.isZero();
+	}
+
+	@Test
+	void repeatedAttemptsCreateOneAdminAndNoMisleadingSuccessRecords() {
+		UUID first = firstAdmin();
+		PhoneNumber target = PhoneNumber.of(phone());
+
+		UUID second = provisioning.provisionAdditionalAdmin(FIRST_PHONE, ADMIN_PASSWORD, "Second Admin", target, null,
+				NEW_PASSWORD);
+		for (int i = 0; i < 2; i++) {
+			assertThatIllegalStateException().isThrownBy(() -> provisioning.provisionAdditionalAdmin(FIRST_PHONE,
+					ADMIN_PASSWORD, "Second Admin", target, null, NEW_PASSWORD));
+		}
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE phone = ?", Integer.class, target.value()))
+			.isEqualTo(1);
+		assertThat(jdbc.queryForList("SELECT entity_id FROM audit_events WHERE action = ?", UUID.class,
+				AdminProvisioningService.PROVISIONED))
+			.containsExactly(first, second);
+		assertThat(jdbc.queryForList("SELECT reason FROM audit_events WHERE action = ?", String.class,
+				AdminProvisioningService.REFUSED))
+			.containsExactly(AdminProvisioningService.ACCOUNT_EXISTS, AdminProvisioningService.ACCOUNT_EXISTS);
+	}
+
+	@Test
+	void provisioningAuditRecordsAreAppendOnlyAndNoApiExposesThem() {
+		firstAdmin();
+
+		assertThatThrownBy(() -> jdbc.update("UPDATE audit_events SET reason = 'tampered'"))
+			.hasMessageContaining("append-only");
+		assertThatThrownBy(() -> jdbc.update("DELETE FROM audit_events")).hasMessageContaining("append-only");
+		assertThat(handlerMapping.getHandlerMethods().keySet())
+			.flatExtracting(info -> info.getPatternValues())
+			.as("no endpoint reads or writes audit_events or assigns roles")
+			.noneMatch(path -> path.contains("audit") || path.contains("role") || path.contains("provision"));
+	}
+
+	@Test
+	void unknownWrongPasswordAndCustomerProvisionersGetTheSameMessage() throws Exception {
+		firstAdmin();
+		String customerPhone = register(phone(), null);
+
+		String unknown = refusalMessage("+8801799999999", ADMIN_PASSWORD);
+		String wrongPassword = refusalMessage(FIRST_PHONE, "wrong-password-123");
+		String customer = refusalMessage(customerPhone, PASSWORD);
+		assertThat(unknown).isEqualTo(wrongPassword).isEqualTo(customer)
+			.isEqualTo("The provisioner could not be authenticated as an enabled ADMIN.");
+	}
+
 	// ------------------------------------------------------------------ helpers
+
+	/** Makes the database reject audit inserts for {@code action} while {@code body} runs. */
+	private void withAuditOutage(String action, Runnable body) {
+		jdbc.execute("""
+				CREATE FUNCTION qa_simulated_audit_outage() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN RAISE EXCEPTION 'simulated audit outage'; END $$""");
+		jdbc.execute("CREATE TRIGGER qa_simulated_audit_outage BEFORE INSERT ON audit_events FOR EACH ROW WHEN (NEW.action = '"
+				+ action + "') EXECUTE FUNCTION qa_simulated_audit_outage()");
+		try {
+			body.run();
+		}
+		finally {
+			jdbc.execute("DROP TRIGGER qa_simulated_audit_outage ON audit_events");
+			jdbc.execute("DROP FUNCTION qa_simulated_audit_outage()");
+		}
+	}
+
+	private String refusalMessage(String provisionerIdentifier, String provisionerPassword) {
+		try {
+			provisioning.provisionAdditionalAdmin(provisionerIdentifier, provisionerPassword, "Second Admin",
+					PhoneNumber.of(phone()), null, NEW_PASSWORD);
+		}
+		catch (ProvisioningRefused ex) {
+			return ex.getMessage();
+		}
+		throw new AssertionError("expected a refusal");
+	}
 
 	private UUID firstAdmin() {
 		return provisioning.provisionFirstAdmin("Store Admin", PhoneNumber.of(FIRST_PHONE), null, ADMIN_PASSWORD);

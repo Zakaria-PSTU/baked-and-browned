@@ -2,6 +2,7 @@ package com.bakedandbrowned.notification.service;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import com.bakedandbrowned.common.outbox.OutboxHandler;
 import com.bakedandbrowned.common.outbox.OutboxMessage;
@@ -10,6 +11,8 @@ import com.bakedandbrowned.ordering.service.OrderEvents;
 import com.bakedandbrowned.payment.service.PaymentEvents;
 
 /** One outbox handler per order or refund event, each sending the matching customer notice. */
+// Not in the provision-admin command (ADR-0024): it sends no notices, so it needs no SmsSender.
+@Profile("!provision-admin")
 @Configuration(proxyBeanMethods = false)
 class OrderNoticeHandlers {
 

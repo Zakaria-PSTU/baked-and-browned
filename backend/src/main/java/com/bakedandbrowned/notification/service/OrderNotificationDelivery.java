@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,8 @@ import com.bakedandbrowned.notification.sms.SmsSender.SmsMessage;
  * then on) under {@code UNIQUE (outbox_event_id, channel)}; a notice already SENT is never sent
  * again. Each statement autocommits and no lock is held while the provider is called.
  */
+// Not in the provision-admin command (ADR-0024): it sends no notices, so it needs no SmsSender.
+@Profile("!provision-admin")
 @Service
 public class OrderNotificationDelivery {
 

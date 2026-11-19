@@ -1,6 +1,7 @@
 package com.bakedandbrowned.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -56,6 +57,11 @@ class ProvisionedAdminsRefundIntegrationTests extends ManualPaymentIntegrationTe
 		adminPost(owner, "/api/v1/admin/refunds/{id}/decision", refundId, "{\"decision\":\"APPROVE\",\"note\":\"Mine\"}")
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(RefundWorkflow.SECOND_APPROVER_REQUIRED));
+		// And the database still refuses a self-approval that bypasses the service.
+		assertThatThrownBy(() -> jdbc.update("""
+				UPDATE refunds SET status = 'APPROVED', decided_by = requested_by, decided_at = now(),
+				                   decision_note = 'self' WHERE id = ?""", refundId))
+			.hasMessageContaining("ck_refund_second_approver");
 
 		adminPost(manager, "/api/v1/admin/refunds/{id}/decision", refundId, "{\"decision\":\"APPROVE\",\"note\":\"Photo checked\"}")
 			.andExpect(status().isOk())

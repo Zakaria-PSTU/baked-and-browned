@@ -97,27 +97,40 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out jwt-private.pe
 
 ### Provisioning admins
 
-Public registration only ever creates customers. ADMINs are created by a one-off command that reads
-credentials from the environment, starts no web server, and exits non-zero on any refusal. There is
-no API for creating admins or changing roles. Every attempt, successful or refused, is recorded in
-`audit_events` (`admin.provisioned` / `admin.provisioning_refused`) without passwords (ADR-0013, ADR-0024).
+Public registration only ever creates customers. ADMINs are created by a one-off command
+(`--spring.profiles.active=provision-admin`). It:
+- starts no web server, scheduled jobs or notification delivery, so it needs no SMS provider;
+- exits non-zero on any refusal;
+- refuses passwords given as command-line arguments.
+
+There is no API for creating admins or changing roles. Every attempt is recorded exactly once in
+`audit_events` (`admin.provisioned`, `admin.provisioning_refused` or `admin.provisioning_failed`),
+without passwords. If the success record cannot be written, the account is rolled back (ADR-0013, ADR-0024).
+
+Run it only from the production platform's one-off task or exec mechanism, as an authorized operator,
+with passwords injected as secret files. Never type them inline.
 
 **First admin** (refused if an ADMIN already exists):
 
 ```sh
-ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+# /run/secrets/admin_password holds the new admin's password (12-128 characters)
+ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD_FILE=/run/secrets/admin_password java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
 
 **Additional admin**, authorized by an existing enabled ADMIN (needed because whoever requests a
 refund can never approve it):
 
 ```sh
-ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD='<that admin's password>' ADMIN_FULL_NAME='Shift Manager' ADMIN_PHONE='+8801YYYYYYYYY' ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD_FILE=/run/secrets/provisioner_password ADMIN_FULL_NAME='Shift Manager' ADMIN_PHONE='+8801YYYYYYYYY' ADMIN_PASSWORD_FILE=/run/secrets/admin_password java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
 
+Notes:
+- The production database and JWT key settings apply as for the web app (`SPRING_DATASOURCE_*`,
+  `APP_SECURITY_JWT_PRIVATE_KEY`). `ADMIN_PASSWORD` / `PROVISIONER_PASSWORD` environment variables
+  also work, but secret files are preferred.
 - The phone and email must be new: an existing account, a customer's included, is never made ADMIN.
-- Keep these credentials out of shell history (for example an env file with restricted permissions)
-  and review new `admin.provisioned` audit events.
+- Alert on and review provisioning audit events, and review the ADMIN list periodically (ADR-0024,
+  "Operational access").
 
 ## Payments port, outbox and scheduled jobs (Phase 1E)
 
