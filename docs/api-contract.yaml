@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.4.0
+  version: 1.5.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -23,6 +23,9 @@ info:
     v1.4, additive: the payment methods checkout can offer (listPaymentMethods),
     and placeOrder refusing an ONLINE order with 409 ONLINE_PAYMENT_UNAVAILABLE
     when no payment gateway is active, before anything is reserved.
+
+    v1.5, additive: placeOrder likewise refuses a MANUAL order with 409
+    MANUAL_PAYMENT_UNAVAILABLE when no receiving accounts are configured.
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -215,7 +218,9 @@ paths:
         same body returns the original order with 201. Reusing a key with a
         different body returns 422 with code IDEMPOTENCY_KEY_REUSED. An ONLINE
         order while no payment gateway is active returns 409 with code
-        ONLINE_PAYMENT_UNAVAILABLE and reserves nothing (v1.4).
+        ONLINE_PAYMENT_UNAVAILABLE and reserves nothing (v1.4); a MANUAL order
+        while no receiving accounts are configured returns 409 with code
+        MANUAL_PAYMENT_UNAVAILABLE and reserves nothing (v1.5).
       requestBody:
         required: true
         content:
