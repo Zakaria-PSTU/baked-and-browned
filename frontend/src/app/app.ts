@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth/auth.service';
 import { AuthSession } from './core/auth/auth-session';
+import { CartStore } from './features/cart/cart-store';
 
 @Component({
   selector: 'bb-root',
@@ -19,6 +20,7 @@ export class App {
 
   protected readonly user = this.session.user;
   protected readonly isAdmin = this.session.isAdmin;
+  protected readonly cartCount = inject(CartStore).count;
 
   protected logout(): void {
     // The local session is cleared even if the request fails; go home either way.

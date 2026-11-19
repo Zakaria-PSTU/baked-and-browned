@@ -5,7 +5,7 @@ import { Uuid } from '../models/uuid';
 export interface ProductCustomizationAssignment {
 
   /**
-   * Must belong to the group; empty for TEXT groups.
+   * Must belong to the group; empty for TEXT groups. Listed in display order (ADR-0021).
    */
   allowedOptionIds: Array<Uuid>;
   groupId: Uuid;

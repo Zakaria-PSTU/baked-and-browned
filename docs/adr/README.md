@@ -24,3 +24,5 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0018](0018-sslcommerz-adapter.md) | SSLCommerz adapter from the public v4 docs | Proposed | 2026-11-18 |
 | [0019](0019-option-costs.md) | Customization options carry kitchen costs | Accepted | 2026-11-18 |
 | [0020](0020-disallowed-combinations.md) | Disallowed option combinations per product | Accepted | 2026-11-18 |
+| [0021](0021-customization-display-order.md) | Per-product display order of customization groups and options | Accepted | 2026-11-18 |
+| [0022](0022-manual-payment-accounts.md) | Manual payment receiving accounts from configuration | Accepted | 2026-11-18 |

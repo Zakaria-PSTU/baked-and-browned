@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthSession } from '../../core/auth/auth-session';
 import { userMessage } from '../../core/http/problem';
@@ -6,6 +7,7 @@ import { userMessage } from '../../core/http/problem';
 /** Minimal account page: proves the bearer + refresh path end to end via `GET /auth/me`. */
 @Component({
   selector: 'bb-account-page',
+  imports: [RouterLink],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

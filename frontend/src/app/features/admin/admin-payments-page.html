@@ -1,0 +1,65 @@
+<p class="text-sm"><a routerLink="/admin" class="text-amber-800 underline">← Dashboard</a></p>
+<section class="mt-4">
+  <div class="flex items-center justify-between gap-4">
+    <h1 class="text-2xl font-semibold tracking-tight">Payments to verify</h1>
+    <button
+      type="button"
+      class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 disabled:opacity-50"
+      [disabled]="payments.isLoading()"
+      (click)="reload()"
+    >
+      Refresh
+    </button>
+  </div>
+  <p class="mt-1 text-sm text-stone-600">
+    Bank and mobile wallet transfers, oldest first. Times are in Dhaka.
+  </p>
+
+  @if (lastDecision(); as message) {
+    <p class="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-900" role="status">
+      {{ message }}
+    </p>
+  }
+
+  @if (payments.error()) {
+    <p class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+      We could not load the payments. Please try again in a moment.
+    </p>
+  } @else if (payments.hasValue()) {
+    @let result = payments.value();
+    @if (result.content.length === 0) {
+      <p class="mt-8 text-center text-stone-600" data-testid="empty">
+        Nothing to verify right now.
+      </p>
+    } @else {
+      <ul class="mt-6 space-y-4">
+        @for (p of result.content; track p.id) {
+          <li><bb-payment-review-card [payment]="p" (decided)="decided($event)" /></li>
+        }
+      </ul>
+      @if (pages() > 1) {
+        <nav class="mt-6 flex items-center justify-between text-sm" aria-label="Pages">
+          <button
+            type="button"
+            class="hover:underline disabled:opacity-40"
+            [disabled]="page() === 0"
+            (click)="go(page() - 1)"
+          >
+            ← Previous
+          </button>
+          <span>Page {{ page() + 1 }} of {{ pages() }}</span>
+          <button
+            type="button"
+            class="hover:underline disabled:opacity-40"
+            [disabled]="page() + 1 >= pages()"
+            (click)="go(page() + 1)"
+          >
+            Next →
+          </button>
+        </nav>
+      }
+    }
+  } @else {
+    <p class="mt-6 text-sm text-stone-600">Loading…</p>
+  }
+</section>

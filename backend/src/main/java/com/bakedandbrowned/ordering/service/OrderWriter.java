@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -101,12 +102,16 @@ class OrderWriter {
 					line.unitPrice().minus(line.customization().optionsTotal()).amount(),
 					line.customization().optionsTotal().amount(), line.unitPrice().amount(), line.lineTotal().amount(),
 					line.productionUnits());
-			for (Choice choice : line.customization().choices()) {
+			// Choices come in the product's display order (ADR-0021); the snapshot keeps it.
+			List<Choice> choices = line.customization().choices();
+			for (int position = 0; position < choices.size(); position++) {
+				Choice choice = choices.get(position);
 				jdbc.update("""
 						INSERT INTO order_item_customizations
-						  (order_item_id, group_id, option_id, group_name, option_name, text_value, price_delta)
-						VALUES (?, ?, ?, ?, ?, ?, ?)""", itemId, choice.groupId(), choice.optionId(), choice.groupName(),
-						choice.optionName(), choice.textValue(), choice.priceDelta().amount());
+						  (order_item_id, group_id, option_id, group_name, option_name, text_value, price_delta,
+						   display_order)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", itemId, choice.groupId(), choice.optionId(), choice.groupName(),
+						choice.optionName(), choice.textValue(), choice.priceDelta().amount(), position);
 			}
 		}
 

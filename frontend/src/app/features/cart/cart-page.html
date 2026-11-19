@@ -1,0 +1,55 @@
+<h1 class="text-2xl font-semibold tracking-tight">Your cart</h1>
+
+@if (cart.items().length === 0) {
+  <section class="py-10 text-center">
+    <p class="text-stone-600">Your cart is empty.</p>
+    <a routerLink="/" class="mt-4 inline-block text-amber-800 underline">Browse the menu</a>
+  </section>
+} @else {
+  <ul class="mt-6 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+    @for (item of cart.items(); track item.id) {
+      <li class="flex flex-wrap items-start justify-between gap-4 p-4" data-testid="cart-item">
+        <div class="min-w-0">
+          <a [routerLink]="['/products', item.slug]" class="font-medium hover:underline">{{
+            item.productName
+          }}</a>
+          @if (item.choices.length > 0) {
+            <ul class="mt-1 text-sm text-stone-600">
+              @for (choice of item.choices; track $index) {
+                <li class="break-words">{{ choice }}</li>
+              }
+            </ul>
+          }
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="text-sm">
+            <span class="sr-only">Quantity of {{ item.productName }}</span>
+            <input
+              type="number"
+              min="1"
+              [max]="maxQuantity"
+              class="w-20 rounded-md border border-stone-300 px-2 py-1.5"
+              [value]="item.line.quantity"
+              (change)="setQuantity(item.id, $event)"
+            />
+          </label>
+          <button
+            type="button"
+            class="text-sm text-red-700 hover:underline"
+            (click)="cart.remove(item.id)"
+          >
+            Remove
+          </button>
+        </div>
+      </li>
+    }
+  </ul>
+  <div class="mt-6 flex flex-wrap items-center justify-between gap-4">
+    <p class="text-sm text-stone-600">Prices, delivery fee and total are calculated at checkout.</p>
+    <a
+      routerLink="/checkout"
+      class="rounded-md bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-900"
+      >Check out</a
+    >
+  </div>
+}

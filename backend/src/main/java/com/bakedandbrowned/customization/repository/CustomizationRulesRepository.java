@@ -54,7 +54,7 @@ public class CustomizationRulesRepository {
 						       ON pco.product_id = pcg.product_id AND pco.group_id = pcg.group_id
 						LEFT JOIN customization_options o ON o.id = pco.option_id
 						WHERE pcg.product_id = ANY (?)
-						ORDER BY pcg.product_id, g.code, o.name, o.id""");
+						ORDER BY pcg.product_id, pcg.display_order, g.code, pco.display_order, o.name, o.id""");
 				ps.setArray(1, con.createArrayOf("uuid", productIds.toArray()));
 				return ps;
 			}, rs -> {

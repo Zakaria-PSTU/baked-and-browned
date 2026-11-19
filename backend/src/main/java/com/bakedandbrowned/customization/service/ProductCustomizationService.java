@@ -28,7 +28,8 @@ import com.bakedandbrowned.customization.repository.CustomizationRulesRepository
  * Assigns customization groups to products and validates customers' choices against them.
  * <p>
  * Replacing a product's assignments locks the product row first, so concurrent replacements
- * serialize, then validates the whole set before writing anything (422 on the first problem).
+ * serialize, then validates the whole set before writing anything (422 on the first problem). The
+ * order of the list, and of each assignment's options, is the order customers see (ADR-0021).
  */
 @Service
 public class ProductCustomizationService {
@@ -99,13 +100,16 @@ public class ProductCustomizationService {
 
 		// Child rows (allowed options) go with their assignment (ON DELETE CASCADE).
 		jdbc.update("DELETE FROM product_customization_groups WHERE product_id = ?", productId);
-		for (AssignmentWrite a : assignments) {
+		// List order is display order (ADR-0021): groups as listed, each group's options as listed.
+		for (int g = 0; g < assignments.size(); g++) {
+			AssignmentWrite a = assignments.get(g);
 			jdbc.update("""
-					INSERT INTO product_customization_groups (product_id, group_id, required, text_max_length)
-					VALUES (?, ?, ?, ?)""", productId, a.groupId(), a.required(), a.textMaxLength());
-			for (UUID optionId : a.allowedOptionIds()) {
-				jdbc.update("INSERT INTO product_customization_options (product_id, group_id, option_id) VALUES (?, ?, ?)",
-						productId, a.groupId(), optionId);
+					INSERT INTO product_customization_groups (product_id, group_id, required, text_max_length, display_order)
+					VALUES (?, ?, ?, ?, ?)""", productId, a.groupId(), a.required(), a.textMaxLength(), g);
+			for (int o = 0; o < a.allowedOptionIds().size(); o++) {
+				jdbc.update("""
+						INSERT INTO product_customization_options (product_id, group_id, option_id, display_order)
+						VALUES (?, ?, ?, ?)""", productId, a.groupId(), a.allowedOptionIds().get(o), o);
 			}
 		}
 		// A disallowed pair only makes sense while the product still allows both of its options.

@@ -3,12 +3,31 @@
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
       <a routerLink="/" class="text-xl font-semibold tracking-tight">{{ brandName }}</a>
       <nav aria-label="Account" class="flex items-center gap-4 text-sm">
+        <a
+          routerLink="/cart"
+          routerLinkActive="font-semibold"
+          class="hover:underline"
+          data-testid="cart-link"
+          >Cart
+          @if (cartCount() > 0) {
+            <span class="ml-1 rounded-full bg-amber-800 px-2 py-0.5 text-xs text-white">{{
+              cartCount()
+            }}</span>
+          }
+        </a>
         @if (user(); as u) {
           @if (isAdmin()) {
             <a routerLink="/admin" routerLinkActive="font-semibold" class="hover:underline"
               >Dashboard</a
             >
           }
+          <a
+            routerLink="/orders"
+            routerLinkActive="font-semibold"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="hover:underline"
+            >My orders</a
+          >
           <a routerLink="/account" routerLinkActive="font-semibold" class="hover:underline">{{
             u.fullName
           }}</a>

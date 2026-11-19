@@ -1,0 +1,216 @@
+<p class="text-sm"><a routerLink="/admin/orders" class="text-amber-800 underline">← Orders</a></p>
+
+@if (notFound()) {
+  <p class="mt-6 text-stone-600">There is no such order.</p>
+} @else if (order.error() && !order.hasValue()) {
+  <p class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+    We could not load this order. Please try again in a moment.
+  </p>
+} @else if (order.hasValue()) {
+  @let o = order.value();
+  <div class="mt-4 flex flex-wrap items-baseline justify-between gap-2">
+    <h1 class="text-2xl font-semibold tracking-tight">Order {{ o.orderNumber }}</h1>
+    <p class="text-lg" data-testid="status">{{ labels[o.status] }}</p>
+  </div>
+  @if (o.createdAt) {
+    <p class="text-sm text-stone-600">Placed {{ at(o.createdAt) }}</p>
+  }
+
+  @if (done(); as message) {
+    <p class="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-900" role="status">
+      {{ message }}
+    </p>
+  }
+  @if (error(); as message) {
+    <p class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+      {{ message }}
+    </p>
+  }
+
+  <section class="mt-6 rounded-lg border border-stone-200 bg-white p-4" aria-label="Actions">
+    <h2 class="font-medium">Next</h2>
+    @if (next(); as step) {
+      <button
+        type="button"
+        class="mt-2 rounded-md bg-amber-800 px-4 py-2 text-sm font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+        [disabled]="busy() !== null"
+        (click)="advance()"
+      >
+        {{ busy() === 'step' ? 'Saving…' : step.label }}
+      </button>
+    } @else if (o.status === 'PENDING_PAYMENT') {
+      <p class="mt-1 text-sm text-stone-600">
+        Waiting for payment. Transfers are confirmed from
+        <a routerLink="/admin/payments" class="text-amber-800 underline">Payments to verify</a>.
+      </p>
+    } @else {
+      <p class="mt-1 text-sm text-stone-600">Nothing more to do for this order.</p>
+    }
+
+    @if (uncollectedCash(); as cod) {
+      <div class="mt-4 border-t border-stone-200 pt-4">
+        <h3 class="text-sm font-medium">
+          Cash on delivery · {{ cod.amount | bdt }} not yet collected
+        </h3>
+        <label for="cash-note" class="mt-2 block text-sm">Who collected it</label>
+        <input
+          id="cash-note"
+          type="text"
+          maxlength="500"
+          class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+          placeholder="e.g. Rider Karim, handed to the shop 18 Nov"
+          [value]="cashNote()"
+          (input)="typeCashNote($event)"
+        />
+        <button
+          type="button"
+          class="mt-2 rounded-md bg-green-800 px-4 py-2 text-sm font-medium text-white hover:bg-green-900 disabled:opacity-50"
+          [disabled]="busy() !== null"
+          (click)="collectCash()"
+        >
+          {{ busy() === 'cash' ? 'Saving…' : 'Record cash collected' }}
+        </button>
+      </div>
+    }
+
+    @if (cancellable()) {
+      <div class="mt-4 border-t border-stone-200 pt-4">
+        <label for="cancel-reason" class="block text-sm font-medium">Cancel this order</label>
+        <textarea
+          id="cancel-reason"
+          rows="2"
+          maxlength="500"
+          class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+          placeholder="Reason, kept in the order history"
+          [value]="cancelReason()"
+          (input)="typeReason($event)"
+        ></textarea>
+        @if (o.status === 'PREPARING' || o.status === 'READY') {
+          <p class="mt-1 text-xs text-stone-500">
+            Ingredients already used are not returned to stock.
+          </p>
+        }
+        @if (confirmingCancel()) {
+          <div class="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              class="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
+              [disabled]="busy() !== null"
+              (click)="cancel()"
+            >
+              {{ busy() === 'cancel' ? 'Cancelling…' : 'Yes, cancel order ' + o.orderNumber }}
+            </button>
+            <button type="button" class="text-sm hover:underline" (click)="keep()">Keep it</button>
+          </div>
+        } @else {
+          <button
+            type="button"
+            class="mt-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
+            [disabled]="busy() !== null"
+            (click)="cancel()"
+          >
+            Cancel order
+          </button>
+        }
+      </div>
+    }
+  </section>
+
+  <div class="mt-6 grid gap-6 md:grid-cols-2">
+    <section class="rounded-lg border border-stone-200 bg-white p-4 text-sm">
+      <h2 class="font-medium">Customer and delivery</h2>
+      <p class="mt-2">{{ o.customerName }} · {{ o.customerPhone }}</p>
+      <p class="mt-2 font-medium">{{ range(o.delivery.slotStartAt, o.delivery.slotEndAt) }}</p>
+      <p class="mt-1 break-words">To {{ o.delivery.name }} · {{ o.delivery.phone }}</p>
+      <p class="break-words whitespace-pre-line">
+        {{ o.delivery.address }}, {{ o.delivery.zoneName }}
+      </p>
+      @if (o.delivery.notes) {
+        <p class="mt-1 break-words whitespace-pre-line text-stone-600">
+          Notes: {{ o.delivery.notes }}
+        </p>
+      }
+    </section>
+
+    <section class="rounded-lg border border-stone-200 bg-white p-4 text-sm">
+      <h2 class="font-medium">Payment</h2>
+      @for (p of o.payments; track p.id) {
+        <div class="mt-2" data-testid="payment">
+          <p>
+            {{ p.method }} · {{ p.status }} · {{ p.amount | bdt }}
+            @if (p.refundedAmount) {
+              · refunded {{ p.refundedAmount | bdt }}
+            }
+          </p>
+          @if (p.verificationNote) {
+            <p class="text-stone-600 break-words">Note: {{ p.verificationNote }}</p>
+          }
+          @if (p.latestSubmission; as s) {
+            <p class="text-stone-600 break-all">
+              Reference {{ s.transactionReference }} ({{ s.status }})
+            </p>
+          }
+        </div>
+      }
+      @if (o.refunds.length > 0) {
+        <h3 class="mt-4 font-medium">Refunds</h3>
+        @for (r of o.refunds; track r.id) {
+          <p class="mt-1 break-words" data-testid="refund">
+            {{ r.amount | bdt }} · {{ r.status }} · {{ r.requestReason }}
+          </p>
+        }
+      }
+    </section>
+  </div>
+
+  <section class="mt-6 rounded-lg border border-stone-200 bg-white p-4 text-sm">
+    <h2 class="font-medium">Items</h2>
+    <ul class="mt-2 divide-y divide-stone-100">
+      @for (item of o.items; track $index) {
+        <li class="py-2" data-testid="item">
+          <div class="flex justify-between gap-4">
+            <span class="font-medium">{{ item.quantity }} × {{ item.productName }}</span>
+            <span class="tabular-nums">{{ item.lineTotal | bdt }}</span>
+          </div>
+          @for (c of item.customizations; track $index) {
+            <p class="break-words text-stone-600">
+              {{ c.groupName }}: {{ c.textValue ?? c.optionName }}
+            </p>
+          }
+        </li>
+      }
+    </ul>
+    <dl class="mt-3 space-y-1 border-t border-stone-200 pt-3">
+      <div class="flex justify-between">
+        <dt>Subtotal</dt>
+        <dd>{{ o.subtotal | bdt }}</dd>
+      </div>
+      <div class="flex justify-between">
+        <dt>Delivery</dt>
+        <dd>{{ o.deliveryFee | bdt }}</dd>
+      </div>
+      <div class="flex justify-between font-semibold">
+        <dt>Total</dt>
+        <dd>{{ o.total | bdt }}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="mt-6 rounded-lg border border-stone-200 bg-white p-4 text-sm">
+    <h2 class="font-medium">History</h2>
+    <ol class="mt-2 space-y-1">
+      @for (e of o.statusEvents; track $index) {
+        <li data-testid="event">
+          <span class="text-stone-600">{{ at(e.at) }}</span> ·
+          {{ e.fromStatus ? labels[e.fromStatus] + ' → ' : '' }}{{ labels[e.toStatus] }} ·
+          {{ e.actorType.toLowerCase() }}
+          @if (e.reason) {
+            <span class="block break-words text-stone-600">“{{ e.reason }}”</span>
+          }
+        </li>
+      }
+    </ol>
+  </section>
+} @else {
+  <p class="mt-6 text-sm text-stone-600">Loading…</p>
+}

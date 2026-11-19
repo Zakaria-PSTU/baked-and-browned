@@ -343,6 +343,16 @@ class PaymentVerificationIntegrationTests extends ManualPaymentIntegrationTest {
 					"attachment; filename=\"payment-proof-" + orderNumber + ".png\""))
 			.andExpect(header().string("X-Content-Type-Options", "nosniff"))
 			.andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+		// The web app accepts every proof type in one request (it cannot know the file's type).
+		mockMvc.perform(get("/api/v1/admin/payments/{id}/proof", paymentId).header(HttpHeaders.AUTHORIZATION, admin)
+			.header(HttpHeaders.ACCEPT, "image/jpeg, image/png, application/pdf"))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType("image/png"));
+		// The file's own type is returned whatever was asked for.
+		mockMvc.perform(get("/api/v1/admin/payments/{id}/proof", paymentId).header(HttpHeaders.AUTHORIZATION, admin)
+			.header(HttpHeaders.ACCEPT, "image/jpeg"))
+			.andExpect(status().isOk())
+			.andExpect(content().contentType("image/png"));
 
 		mockMvc.perform(get("/api/v1/admin/payments/{id}/proof", paymentId).header(HttpHeaders.AUTHORIZATION, customer))
 			.andExpect(status().isForbidden());

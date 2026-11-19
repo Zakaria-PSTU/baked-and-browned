@@ -15,7 +15,7 @@ Customers in Dhaka commonly pay cash on delivery or by bank / mobile financial s
 - Refunds: REQUESTED → APPROVED/REJECTED → COMPLETED, each step by an ADMIN with reason/reference, audited. Payment becomes REFUNDED only on COMPLETED. Full refunds only in MVP.
 
 ## Business configuration still required before launch
-- Which bank accounts / MFS merchant numbers are shown to customers (business configuration).
+- Which bank accounts / MFS merchant numbers are shown to customers (business configuration; how: ADR-0022).
 - Proof-file retention period.
 
 ## Consequences
