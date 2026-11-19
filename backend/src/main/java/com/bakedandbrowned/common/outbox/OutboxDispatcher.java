@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,8 @@ import org.springframework.stereotype.Component;
  * </ol>
  * A crash between claim and record leaves the event to be claimed again once the lease expires.
  */
+// Not in the provision-admin command (ADR-0024): it sends no notices, so it needs no SmsSender.
+@Profile("!provision-admin")
 @Component
 @EnableConfigurationProperties(OutboxProperties.class)
 public class OutboxDispatcher {

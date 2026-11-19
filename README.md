@@ -95,17 +95,51 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out jwt-private.pe
 - The SPA must send at most one refresh at a time. Two parallel refreshes with the same token count as reuse and end the session.
 - Per-IP limits on login, register and refresh. Behind the reverse proxy, client IPs come from `X-Forwarded-For` set by a trusted internal proxy (`server.forward-headers-strategy: native`).
 
-### Provisioning the first admin
+### Provisioning admins
 
-Public registration only ever creates customers. The first ADMIN is created by a one-off command
-that reads credentials from the environment, starts no web server, and refuses to run if an ADMIN
-already exists:
+Public registration only ever creates customers. ADMINs are created by a one-off command
+(`--spring.profiles.active=provision-admin`). It:
+- starts no web server, scheduled jobs or notification delivery, so it needs no SMS provider;
+- exits non-zero on any refusal;
+- refuses passwords given as command-line arguments.
+
+There is no API for creating admins or changing roles. Every attempt is recorded exactly once in
+`audit_events` (`admin.provisioned`, `admin.provisioning_refused` or `admin.provisioning_failed`),
+without passwords. If the success record cannot be written, the account is rolled back (ADR-0013, ADR-0024).
+
+Run it only from the production platform's one-off task or exec mechanism, as an authorized operator,
+with passwords injected as secret files. Never type them inline.
+
+**First admin** (refused if an ADMIN already exists):
 
 ```sh
-ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' \
-ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true \
-java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+# /run/secrets/admin_password holds the new admin's password (12-128 characters)
+ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD_FILE=/run/secrets/admin_password java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
+
+**Additional admin**, authorized by an existing enabled ADMIN (needed because whoever requests a
+refund can never approve it):
+
+```sh
+ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD_FILE=/run/secrets/provisioner_password ADMIN_FULL_NAME='Shift Manager' ADMIN_PHONE='+8801YYYYYYYYY' ADMIN_PASSWORD_FILE=/run/secrets/admin_password java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+```
+
+Notes:
+- The production database and JWT key settings apply as for the web app (`SPRING_DATASOURCE_*`,
+  `APP_SECURITY_JWT_PRIVATE_KEY`).
+- Passwords are accepted only from `*_FILE` secret files (preferred) or process environment variables.
+  Command-line arguments, `-D` system properties, `spring.application.json` and config files are refused.
+- Secret files must be:
+  - delivered by the platform's secret mechanism (orchestrator secret or tmpfs mount), never baked into
+    an image or committed;
+  - owned by the account running the command, with mode `0400`/`0600` (no group or world access);
+  - removed after the run.
+
+  The command does not check permissions itself.
+- The command refuses to run if a web server is started (do not override `spring.main.web-application-type`).
+- The phone and email must be new: an existing account, a customer's included, is never made ADMIN.
+- Alert on and review provisioning audit events, and review the ADMIN list periodically (ADR-0024,
+  "Operational access").
 
 ## Payments port, outbox and scheduled jobs (Phase 1E)
 

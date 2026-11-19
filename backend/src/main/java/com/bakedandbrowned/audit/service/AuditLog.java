@@ -43,6 +43,19 @@ public class AuditLog {
 				json.writeValueAsString(details), MDC.get(TraceIdFilter.MDC_KEY));
 	}
 
+	/**
+	 * An action with no authenticated application user behind it (actor SYSTEM), such as an
+	 * operator-run command before any ADMIN exists or one whose caller failed to authenticate.
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void system(String action, String entityType, @Nullable UUID entityId, @Nullable String reason,
+			Map<String, ?> details) {
+		jdbc.update("""
+				INSERT INTO audit_events (actor_type, action, entity_type, entity_id, reason, details, trace_id)
+				VALUES ('SYSTEM', ?, ?, ?, ?, ?::jsonb, ?)""", action, entityType, entityId, reason,
+				json.writeValueAsString(details), MDC.get(TraceIdFilter.MDC_KEY));
+	}
+
 	/** A decision taken on a payment gateway's server-to-server verified result (actor GATEWAY). */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void gateway(String action, String entityType, @Nullable UUID entityId, Map<String, ?> details) {
