@@ -95,17 +95,29 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out jwt-private.pe
 - The SPA must send at most one refresh at a time. Two parallel refreshes with the same token count as reuse and end the session.
 - Per-IP limits on login, register and refresh. Behind the reverse proxy, client IPs come from `X-Forwarded-For` set by a trusted internal proxy (`server.forward-headers-strategy: native`).
 
-### Provisioning the first admin
+### Provisioning admins
 
-Public registration only ever creates customers. The first ADMIN is created by a one-off command
-that reads credentials from the environment, starts no web server, and refuses to run if an ADMIN
-already exists:
+Public registration only ever creates customers. ADMINs are created by a one-off command that reads
+credentials from the environment, starts no web server, and exits non-zero on any refusal. There is
+no API for creating admins or changing roles. Every attempt, successful or refused, is recorded in
+`audit_events` (`admin.provisioned` / `admin.provisioning_refused`) without passwords (ADR-0013, ADR-0024).
+
+**First admin** (refused if an ADMIN already exists):
 
 ```sh
-ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' \
-ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true \
-java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+ADMIN_FULL_NAME='Store Admin' ADMIN_PHONE='+8801XXXXXXXXX' ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
+
+**Additional admin**, authorized by an existing enabled ADMIN (needed because whoever requests a
+refund can never approve it):
+
+```sh
+ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD='<that admin's password>' ADMIN_FULL_NAME='Shift Manager' ADMIN_PHONE='+8801YYYYYYYYY' ADMIN_PASSWORD='<12-128 characters>' APP_SECURITY_JWT_ALLOW_EPHEMERAL_KEY=true java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+```
+
+- The phone and email must be new: an existing account, a customer's included, is never made ADMIN.
+- Keep these credentials out of shell history (for example an env file with restricted permissions)
+  and review new `admin.provisioned` audit events.
 
 ## Payments port, outbox and scheduled jobs (Phase 1E)
 
