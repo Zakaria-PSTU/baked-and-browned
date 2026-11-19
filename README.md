@@ -126,8 +126,17 @@ ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIO
 
 Notes:
 - The production database and JWT key settings apply as for the web app (`SPRING_DATASOURCE_*`,
-  `APP_SECURITY_JWT_PRIVATE_KEY`). `ADMIN_PASSWORD` / `PROVISIONER_PASSWORD` environment variables
-  also work, but secret files are preferred.
+  `APP_SECURITY_JWT_PRIVATE_KEY`).
+- Passwords are accepted only from `*_FILE` secret files (preferred) or process environment variables.
+  Command-line arguments, `-D` system properties, `spring.application.json` and config files are refused.
+- Secret files must be:
+  - delivered by the platform's secret mechanism (orchestrator secret or tmpfs mount), never baked into
+    an image or committed;
+  - owned by the account running the command, with mode `0400`/`0600` (no group or world access);
+  - removed after the run.
+
+  The command does not check permissions itself.
+- The command refuses to run if a web server is started (do not override `spring.main.web-application-type`).
 - The phone and email must be new: an existing account, a customer's included, is never made ADMIN.
 - Alert on and review provisioning audit events, and review the ADMIN list periodically (ADR-0024,
   "Operational access").

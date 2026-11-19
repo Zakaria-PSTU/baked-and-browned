@@ -23,6 +23,7 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 
 import com.bakedandbrowned.BakedAndBrownedApplication;
@@ -36,8 +37,9 @@ import com.bakedandbrowned.notification.sms.SmsSender;
 /**
  * Runs the real {@code provision-admin} command, as an operator would, against the isolated test
  * database with production-like configuration: only that profile (no {@code test} or {@code dev}),
- * no SMS provider, no fake SMS sender. Variables are supplied as an environment property source,
- * the way the process environment is. The only non-production setting is the ephemeral JWT key.
+ * no SMS provider, no fake SMS sender. Variables are supplied as the process-environment property
+ * source, which is where production supplies them. The only non-production setting is the
+ * ephemeral JWT key.
  */
 @ExtendWith(OutputCaptureExtension.class)
 class AdminProvisioningCommandIntegrationTests extends IdentityIntegrationTest {
@@ -104,14 +106,36 @@ class AdminProvisioningCommandIntegrationTests extends IdentityIntegrationTest {
 	}
 
 	@Test
-	void passwordsOnTheCommandLineAreRefused(CapturedOutput output) {
+	void passwordsOutsideTheProcessEnvironmentAreRefused(CapturedOutput output) {
 		Map<String, String> variables = new HashMap<>(firstAdminVariables());
 		variables.remove("ADMIN_PASSWORD");
 
-		assertThatThrownBy(() -> command(variables, "--ADMIN_PASSWORD=" + FIRST_PASSWORD))
+		// --ADMIN_PASSWORD=… (process listing, shell history)
+		assertThatThrownBy(() -> command(variables, Map.of(), "--ADMIN_PASSWORD=" + FIRST_PASSWORD))
 			.isInstanceOf(IllegalStateException.class)
-			.hasMessageContaining("must not be passed on the command line")
-			.hasMessageNotContaining(FIRST_PASSWORD);
+			.hasMessage("ADMIN_PASSWORD must not be set in a command-line argument; provide it as ADMIN_PASSWORD_FILE"
+					+ " (a secret file) or in the process environment");
+		// java -DPROVISIONER_PASSWORD=… (process listing)
+		assertThatThrownBy(() -> command(variables, Map.of("PROVISIONER_PASSWORD", FIRST_PASSWORD)))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageStartingWith("PROVISIONER_PASSWORD must not be set in a JVM system property (-D)");
+		// --spring.application.json={"ADMIN_PASSWORD": …}
+		assertThatThrownBy(() -> command(variables, Map.of(),
+				"--spring.application.json={\"ADMIN_PASSWORD\":\"" + FIRST_PASSWORD + "\"}"))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageStartingWith("ADMIN_PASSWORD must not be set in the configuration source 'spring.application.json'");
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
+		assertThat(output.getAll()).doesNotContain(FIRST_PASSWORD);
+	}
+
+	@Test
+	void theCommandRefusesToRunWithAWebServer(CapturedOutput output) {
+		Map<String, String> variables = new HashMap<>(firstAdminVariables());
+		variables.put("spring.main.web-application-type", "servlet");
+
+		assertThatThrownBy(() -> command(variables)).isInstanceOf(IllegalStateException.class)
+			.hasMessageStartingWith("provision-admin must not run with a web server");
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
 		assertThat(output.getAll()).doesNotContain(FIRST_PASSWORD);
 	}
@@ -164,18 +188,41 @@ class AdminProvisioningCommandIntegrationTests extends IdentityIntegrationTest {
 		throw new AssertionError("the command should have been refused");
 	}
 
-	/** The command as an operator runs it. */
+	/** The command as an operator runs it, with {@code variables} as its process environment. */
 	private ConfigurableApplicationContext command(Map<String, String> variables, String... args) {
-		return application(variables, null).profiles("provision-admin").run(args);
+		return command(variables, Map.of(), args);
+	}
+
+	/** As above, plus JVM system properties ({@code -D}) for this run only. */
+	private ConfigurableApplicationContext command(Map<String, String> variables, Map<String, String> systemProperties,
+			String... args) {
+		return application(variables, systemProperties, null).profiles("provision-admin").run(args);
 	}
 
 	private SpringApplicationBuilder application(Map<String, String> variables, @Nullable WebApplicationType type) {
+		return application(variables, Map.of(), type);
+	}
+
+	/**
+	 * Replaces the process-environment property source with {@code variables} (plus the isolated
+	 * test database and an ephemeral JWT key), as production supplies everything as environment
+	 * variables, and overlays {@code systemProperties} without touching the JVM's own.
+	 */
+	private SpringApplicationBuilder application(Map<String, String> variables, Map<String, String> systemProperties,
+			@Nullable WebApplicationType type) {
 		Map<String, Object> environment = new HashMap<>(Map.of("spring.datasource.url", database.getJdbcUrl(),
 				"spring.datasource.username", database.getUsername(), "spring.datasource.password",
 				database.getPassword(), "app.security.jwt.allow-ephemeral-key", "true", "server.port", "0"));
 		environment.putAll(variables);
 		StandardEnvironment env = new StandardEnvironment();
-		env.getPropertySources().addFirst(new MapPropertySource("operatorEnvironment", environment));
+		env.getPropertySources().replace(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+				new SystemEnvironmentPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, environment));
+		if (!systemProperties.isEmpty()) {
+			Map<String, Object> properties = new HashMap<>(env.getSystemProperties());
+			properties.putAll(systemProperties);
+			env.getPropertySources().replace(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME,
+					new MapPropertySource(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME, properties));
+		}
 		SpringApplicationBuilder builder = new SpringApplicationBuilder(BakedAndBrownedApplication.class)
 			.environment(env);
 		return type == null ? builder : builder.web(type);

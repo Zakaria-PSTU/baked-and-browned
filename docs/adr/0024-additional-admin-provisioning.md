@@ -1,6 +1,6 @@
 # ADR-0024: Provision additional admins through the operator command
 
-- Status: Proposed (revision 2: no SMS dependency, audit integrity, credential handling)
+- Status: Proposed (revision 3: password sources restricted, web-server guard, secret-file requirements)
 - Date: 2026-11-19
 - Builds on: ADR-0013 (first ADMIN by an operator-run command), ADR-0016 (SMS notices), ADR-0017 (second-approver refund review)
 
@@ -33,6 +33,11 @@ Under the `provision-admin` profile these beans are left out (`@Profile("!provis
 - `OutboxDispatchJob`
 
 The command sends no notices, so it needs no `SmsSender`. No sender is activated, the fake one included.
+
+**Can provisioning mode disable notifications in normal web startup?** No:
+- The exclusions apply only when the `provision-admin` profile is active, and that profile turns the web server off.
+- If someone forces a web server on anyway (`spring.main.web-application-type=servlet`), the command refuses to run and startup fails. The profile can never serve traffic without notification delivery.
+- Normal web startup (without the profile) keeps every notification bean, and still requires an `SmsSender`.
 
 The profile also sets `web-application-type: none` and `app.scheduling.enabled: false`, so the command starts:
 - no web server;
@@ -76,9 +81,20 @@ Every attempt produces **exactly one** record in the existing append-only `audit
 - **Tamper resistance.** The `trg_audit_events_append_only` trigger rejects UPDATE and DELETE, and no customer or admin API reads or writes `audit_events`; both are tested.
 
 ### Secret handling
-- Passwords are read from a secret file named by `ADMIN_PASSWORD_FILE` / `PROVISIONER_PASSWORD_FILE` (preferred, for example a mounted container or orchestrator secret), or from the environment.
-- They are **refused as command-line arguments** (`--ADMIN_PASSWORD=…`), which process listings and shell history would show.
-- They are never logged or echoed. Error messages carry no secret values.
+- **Where passwords come from.** Passwords are read **only** from a secret file named by `ADMIN_PASSWORD_FILE` / `PROVISIONER_PASSWORD_FILE` (preferred) or from the **process environment**.
+- **Where they are refused.** A password found in any other configuration source fails the command, and the error names the source, never the value. That covers:
+  - command-line arguments (`--ADMIN_PASSWORD=…`);
+  - JVM system properties (`-DPROVISIONER_PASSWORD=…`);
+  - `spring.application.json`;
+  - configuration files.
+
+  Process listings, shell history or the repository would otherwise expose them.
+- **Never logged or echoed.** Error messages carry no secret values, and a file read error reports only the exception type, not the path's contents.
+- **Secret-file requirements** (operator duty; the command cannot verify permissions portably, for example on Windows hosts):
+  - delivered by the platform's secret mechanism (orchestrator secret, mounted secret volume or tmpfs), never written to an image, a repository or a shared disk;
+  - owned by the account that runs the command and readable only by it: mode `0400` (or `0600`), no group or world access;
+  - one password per file; a single trailing line break is ignored;
+  - removed, or the secret unmounted, as soon as the run finishes, and rotated if it may have been exposed.
 
 ### Refund separation of duties
 Unchanged: `SECOND_APPROVER_REQUIRED` and `ck_refund_second_approver` are untouched. A test covers the whole workflow:
@@ -116,7 +132,7 @@ Unchanged: `SECOND_APPROVER_REQUIRED` and `ck_refund_second_approver` are untouc
   - organisational control of server access and admin credentials;
   - monitoring: every admin's `admin.provisioned` record names the authorizing admin, and refunds record requester and approver.
 - **`processAccount` is not a human identity.** In containers it is usually a service account. Attributing a run to a person relies on the platform's own access logs.
-- **Environment variables** can be read by root or by the same OS user through `/proc`. Secret files with restricted permissions are preferred; the command cannot enforce file permissions.
+- **Environment variables** can be read by root or by the same OS user through `/proc`. Secret files with the permissions above are preferred. The command does not check file permissions, so that remains an operator control.
 - **No way to disable or remove an admin** without SQL yet. A candidate for the same command.
 - **Production web startup** still needs a real SMS provider. That is a launch blocker outside this ADR.
 
@@ -133,16 +149,17 @@ All counts are from actual runs.
   - 4 concurrent runs: exactly one admin and one success record naming it;
   - append-only audit, and no API path for audit, roles or provisioning;
   - no secrets or full contact details in the audit.
-- **`AdminProvisioningCommandIntegrationTests`: 5 tests,** running the real command with **only** `provision-admin` (no `test` or `dev` profile):
+- **`AdminProvisioningCommandIntegrationTests`: 6 tests** (revision 3), running the real command with **only** `provision-admin` (no `test` or `dev` profile):
   - both modes, the second using secret files: no `SmsSender` or `FakeSmsSender` bean, no notification delivery or outbox dispatcher, no scheduling, no web server, and no passwords in the captured output;
   - refusals fail the command with an identical message for an unknown account and a wrong password;
-  - command-line passwords are refused;
+  - passwords in a command-line argument, a `-D` system property or `spring.application.json` are refused, each with an error naming the source and not the value;
+  - the command refuses to run when a web server is forced on;
   - the JWT key policy is still enforced;
   - **normal web startup without an SMS provider still fails** (`NoSuchBeanDefinitionException: SmsSender`).
 - **`ProvisionedAdminsRefundIntegrationTests`:** the full A/B workflow, including the database refusing a direct self-approval.
 - **Existing tests unchanged and passing:** `RefundWorkflowIntegrationTests` (25), `OrderNotificationIntegrationTests` (9), `OutboxIntegrationTests` (7).
-- **Mutation checks:**
-  - With the command-line secret check disabled, 1 test failed (`passwordsOnTheCommandLineAreRefused`).
+- **Mutation checks** (revision 2):
+  - With the command-line secret check disabled, 1 test failed (`passwordsOnTheCommandLineAreRefused`, since replaced by `passwordsOutsideTheProcessEnvironmentAreRefused`).
   - With the success record moved after the commit, 1 test failed (`aFailedSuccessAuditRollsBackTheNewAdmin`).
   - With the audit-write error swallowed in code, no test failed: PostgreSQL aborts the failed transaction regardless, so the admin is still rolled back.
-- **Full build:** `./mvnw -B clean verify` ran 528 tests, 0 failures, 0 errors, 0 skipped. The spec check passes.
+- **Full build (revision 3):** `./mvnw -B clean verify` ran 529 tests, 0 failures, 0 errors, 0 skipped. The spec check passes. An earlier run of the same build failed before any test ran: the Testcontainers PostgreSQL did not become ready in time. An unchanged rerun passed.

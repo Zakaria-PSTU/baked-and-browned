@@ -26,4 +26,4 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0020](0020-disallowed-combinations.md) | Disallowed option combinations per product | Accepted | 2026-11-18 |
 | [0021](0021-customization-display-order.md) | Per-product display order of customization groups and options | Accepted | 2026-11-18 |
 | [0022](0022-manual-payment-accounts.md) | Manual payment receiving accounts from configuration | Accepted | 2026-11-18 |
-| [0024](0024-additional-admin-provisioning.md) | Provision additional admins through the operator command (revision 2) | Proposed | 2026-11-19 |
+| [0024](0024-additional-admin-provisioning.md) | Provision additional admins through the operator command (revision 3) | Proposed | 2026-11-19 |

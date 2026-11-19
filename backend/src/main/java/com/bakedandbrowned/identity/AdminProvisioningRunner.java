@@ -13,8 +13,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.web.server.context.WebServerApplicationContext;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Profile;
-import org.springframework.core.env.Environment;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.stereotype.Component;
 
 import com.bakedandbrowned.common.value.PhoneNumber;
@@ -23,7 +27,8 @@ import com.bakedandbrowned.identity.service.AdminProvisioningService;
 /**
  * Operator-run one-off command that creates an ADMIN, active only under the {@code provision-admin}
  * profile. That profile starts no web server and no scheduled jobs, and the notification and
- * outbox delivery beans are left out (ADR-0024).
+ * outbox delivery beans are left out (ADR-0024). The command refuses to run if a web server was
+ * started anyway, so the profile can never serve traffic without notification delivery.
  * <ul>
  * <li>{@code ADMIN_PROVISION_MODE=first} (the default): the first ADMIN, from {@code ADMIN_FULL_NAME},
  * {@code ADMIN_PHONE}, optional {@code ADMIN_EMAIL} and {@code ADMIN_PASSWORD}.</li>
@@ -31,11 +36,13 @@ import com.bakedandbrowned.identity.service.AdminProvisioningService;
  * {@code PROVISIONER_IDENTIFIER} and {@code PROVISIONER_PASSWORD} of an existing enabled ADMIN who
  * authorizes it.</li>
  * </ul>
- * Passwords come from the environment or, preferably, from a secret file named by
- * {@code ADMIN_PASSWORD_FILE} / {@code PROVISIONER_PASSWORD_FILE} (for example a mounted container
- * secret). They are refused on the command line, where process listings and shell history would
- * show them, and they are never logged. Any refusal fails startup, so the process exits non-zero.
- * See README, "Provisioning admins".
+ * Passwords are read <b>only</b> from a secret file named by {@code ADMIN_PASSWORD_FILE} /
+ * {@code PROVISIONER_PASSWORD_FILE} (preferred, for example a mounted container secret) or from the
+ * process environment. A password found in any other configuration source (command-line
+ * arguments, {@code -D} system properties, {@code spring.application.json}, configuration files) is
+ * refused, because process listings, shell history or the repository would show it. Passwords are
+ * never logged or put in exception messages. Any refusal fails startup, so the process exits
+ * non-zero. See README, "Provisioning admins".
  */
 @Component
 @Profile("provision-admin")
@@ -43,25 +50,31 @@ class AdminProvisioningRunner implements ApplicationRunner {
 
 	static final List<String> SECRETS = List.of("ADMIN_PASSWORD", "PROVISIONER_PASSWORD");
 
+	/** Spring Boot's attached view over all property sources (ConfigurationPropertySources). */
+	private static final String ATTACHED_VIEW = "configurationProperties";
+
 	private static final Logger log = LoggerFactory.getLogger(AdminProvisioningRunner.class);
 
 	private final AdminProvisioningService provisioning;
 
-	private final Environment environment;
+	private final ConfigurableEnvironment environment;
 
-	AdminProvisioningRunner(AdminProvisioningService provisioning, Environment environment) {
+	private final ApplicationContext context;
+
+	AdminProvisioningRunner(AdminProvisioningService provisioning, ConfigurableEnvironment environment,
+			ApplicationContext context) {
 		this.provisioning = provisioning;
 		this.environment = environment;
+		this.context = context;
 	}
 
 	@Override
 	public void run(ApplicationArguments args) {
-		for (String secret : SECRETS) {
-			if (args.containsOption(secret)) {
-				throw new IllegalStateException(secret + " must not be passed on the command line; set it in the"
-						+ " environment or in a file named by " + secret + "_FILE");
-			}
+		if (context instanceof WebServerApplicationContext) {
+			throw new IllegalStateException("provision-admin must not run with a web server; it leaves out notification"
+					+ " delivery. Do not override spring.main.web-application-type for this command.");
 		}
+		refuseSecretsOutsideTheProcessEnvironment();
 		String mode = environment.getProperty("ADMIN_PROVISION_MODE", "first").strip().toLowerCase(Locale.ROOT);
 		switch (mode) {
 			case "first" -> {
@@ -81,12 +94,40 @@ class AdminProvisioningRunner implements ApplicationRunner {
 		}
 	}
 
-	/** A password from {@code NAME_FILE} (one trailing line break removed) or {@code NAME}, never both. */
+	/** Names the source, never the value. */
+	private void refuseSecretsOutsideTheProcessEnvironment() {
+		for (PropertySource<?> source : environment.getPropertySources()) {
+			String sourceName = source.getName();
+			if (sourceName.equals(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+					|| sourceName.equals(ATTACHED_VIEW)) {
+				continue; // the process environment itself, or the view that merely wraps all sources
+			}
+			for (String secret : SECRETS) {
+				if (source.containsProperty(secret)) {
+					throw new IllegalStateException(secret + " must not be set in " + describe(sourceName)
+							+ "; provide it as " + secret + "_FILE (a secret file) or in the process environment");
+				}
+			}
+		}
+	}
+
+	private static String describe(String sourceName) {
+		return switch (sourceName) {
+			case "commandLineArgs" -> "a command-line argument";
+			case StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME -> "a JVM system property (-D)";
+			default -> "the configuration source '" + sourceName + "'";
+		};
+	}
+
+	/**
+	 * A password from the file named by {@code NAME_FILE} (one trailing line break removed) or from
+	 * the process environment variable {@code NAME}, never both.
+	 */
 	private String secret(String name) {
 		String file = environment.getProperty(name + "_FILE");
-		@Nullable String direct = environment.getProperty(name);
+		@Nullable Object direct = processEnvironment().getProperty(name);
 		if (file != null && !file.isBlank()) {
-			if (direct != null && !direct.isEmpty()) {
+			if (direct != null && !direct.toString().isEmpty()) {
 				throw new IllegalStateException("Set either " + name + " or " + name + "_FILE, not both");
 			}
 			try {
@@ -102,7 +143,19 @@ class AdminProvisioningRunner implements ApplicationRunner {
 				throw new IllegalStateException(name + "_FILE could not be read (" + ex.getClass().getSimpleName() + ")");
 			}
 		}
-		return required(name);
+		if (direct == null || direct.toString().isBlank()) {
+			throw new IllegalStateException(name + "_FILE or " + name + " must be set in the environment");
+		}
+		return direct.toString();
+	}
+
+	private PropertySource<?> processEnvironment() {
+		PropertySource<?> source = environment.getPropertySources()
+			.get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+		if (source == null) {
+			throw new IllegalStateException("The process environment is not available");
+		}
+		return source;
 	}
 
 	private String required(String name) {
