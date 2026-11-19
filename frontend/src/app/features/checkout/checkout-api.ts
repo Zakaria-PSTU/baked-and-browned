@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { ApiConfiguration } from '../../core/api/generated/api-configuration';
 import {
+  cancelMyOrder,
   getOrder,
   listDeliverySlots,
   listDeliveryZones,
@@ -55,6 +56,17 @@ export class CheckoutApi {
 
   order(orderId: string): Observable<OrderDetail> {
     return getOrder(this.http, this.rootUrl, { orderId }).pipe(map((r) => r.body));
+  }
+
+  /**
+   * Cancels the customer's own order before its deadline (ADR-0009). A paid order gets a refund
+   * request; money moves only through the ADMIN refund workflow.
+   */
+  cancel(orderId: string, reason?: string): Observable<OrderDetail> {
+    return cancelMyOrder(this.http, this.rootUrl, {
+      orderId,
+      body: reason ? { reason } : undefined,
+    }).pipe(map((r) => r.body));
   }
 
   /** Where to send a MANUAL payment; empty when it is not offered (ADR-0022). */

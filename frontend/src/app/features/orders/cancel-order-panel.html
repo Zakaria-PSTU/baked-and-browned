@@ -1,0 +1,64 @@
+<section
+  class="rounded-lg border border-stone-200 bg-white p-4 text-sm"
+  aria-labelledby="cancel-heading"
+  data-testid="cancel-panel"
+>
+  <h2 id="cancel-heading" class="font-medium">Changed your mind?</h2>
+  <p class="mt-1 text-stone-600" data-testid="cancel-deadline">
+    You can cancel this order until {{ formatDateTime(order().cancellationDeadline) }}.
+    @if (order().payment.status === 'SUCCEEDED') {
+      We will then review a refund of your payment.
+    }
+  </p>
+
+  @if (confirming()) {
+    <label for="cancel-reason" class="mt-3 block font-medium">Reason (optional)</label>
+    <textarea
+      id="cancel-reason"
+      rows="2"
+      [attr.maxlength]="reasonMax"
+      class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+      [value]="reason()"
+      (input)="typeReason($event)"
+    ></textarea>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        class="rounded-md bg-red-700 px-4 py-2 font-medium text-white hover:bg-red-800 disabled:opacity-50"
+        [disabled]="busy()"
+        (click)="confirm()"
+        data-testid="confirm-cancel"
+      >
+        {{ busy() ? 'Cancelling…' : 'Yes, cancel order ' + order().orderNumber }}
+      </button>
+      <button
+        type="button"
+        class="hover:underline"
+        [disabled]="busy()"
+        (click)="keep()"
+        data-testid="keep-order"
+      >
+        Keep my order
+      </button>
+    </div>
+  } @else {
+    <button
+      type="button"
+      class="mt-3 rounded-md border border-red-300 px-4 py-2 font-medium text-red-800 hover:bg-red-50"
+      (click)="start()"
+      data-testid="start-cancel"
+    >
+      Cancel order
+    </button>
+  }
+
+  @if (error(); as message) {
+    <p
+      class="mt-3 rounded-md bg-red-50 px-3 py-2 text-red-800"
+      role="alert"
+      data-testid="cancel-error"
+    >
+      {{ message }}
+    </p>
+  }
+</section>
