@@ -60,9 +60,12 @@ public final class OrderDtos {
 			@Nullable String notes, UUID slotId, Instant slotStartAt, Instant slotEndAt) {
 	}
 
-	/** Contract {@code OrderPaymentSummary}: no gateway identifiers or verification notes. */
+	/**
+	 * Contract {@code OrderPaymentSummary}: no gateway identifiers or verification notes.
+	 * {@code underReview} (v1.6): an open payment reconciliation case exists for the order.
+	 */
 	public record PaymentSummary(String method, String status, @Nullable String manualSubmissionStatus,
-			@Nullable String refundStatus) {
+			@Nullable String refundStatus, boolean underReview) {
 	}
 
 	/** Contract {@code OrderStatusEvent}: no actor identities or admin notes. */

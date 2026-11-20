@@ -150,14 +150,16 @@ public class OrderQueryService {
 				       (SELECT m.status::text FROM manual_payment_submissions m WHERE m.payment_id = p.id
 				        ORDER BY m.created_at DESC LIMIT 1) AS manual_status,
 				       (SELECT r.status::text FROM refunds r WHERE r.order_id = p.order_id
-				        ORDER BY r.created_at DESC LIMIT 1) AS refund_status
+				        ORDER BY r.created_at DESC LIMIT 1) AS refund_status,
+				       EXISTS (SELECT 1 FROM payment_reconciliation_cases c
+				               WHERE c.order_id = p.order_id AND c.status = 'OPEN') AS under_review
 				FROM payments p WHERE p.order_id = ? AND p.superseded_at IS NULL""", orderId);
 		if (rows.isEmpty()) {
 			throw new IllegalStateException("Order " + orderId + " has no current payment");
 		}
 		Map<String, Object> p = rows.get(0);
 		return new PaymentSummary(method, (String) p.get("status"), (String) p.get("manual_status"),
-				(String) p.get("refund_status"));
+				(String) p.get("refund_status"), Boolean.TRUE.equals(p.get("under_review")));
 	}
 
 	private List<StatusEvent> history(UUID orderId) {

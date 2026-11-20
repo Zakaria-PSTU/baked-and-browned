@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.5.0
+  version: 1.6.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -26,6 +26,9 @@ info:
 
     v1.5, additive: placeOrder likewise refuses a MANUAL order with 409
     MANUAL_PAYMENT_UNAVAILABLE when no receiving accounts are configured.
+
+    v1.6, additive: `underReview` on the customer's OrderPaymentSummary, true
+    while an open payment reconciliation case exists for the order (QA-03).
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -2012,6 +2015,13 @@ components:
           allOf:
             - {$ref: '#/components/schemas/RefundStatus'}
           nullable: true
+        underReview:
+          type: boolean
+          description: |
+            v1.6. True while an open payment reconciliation case exists for
+            this order, for example a payment that arrived after the order
+            expired; false once an ADMIN has resolved it. No case details are
+            exposed to the customer.
     OrderDetail:
       description: Customer order detail (v1.1). Superset of Order.
       allOf:

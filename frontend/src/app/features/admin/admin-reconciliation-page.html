@@ -1,0 +1,49 @@
+<p class="text-sm"><a routerLink="/admin" class="text-amber-800 underline">← Dashboard</a></p>
+<section class="mt-4">
+  <div class="flex items-center justify-between gap-4">
+    <h1 class="text-2xl font-semibold tracking-tight">Payment reconciliation</h1>
+    <button
+      type="button"
+      class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 disabled:opacity-50"
+      [disabled]="cases.isLoading()"
+      (click)="reload()"
+    >
+      Refresh
+    </button>
+  </div>
+  <p class="mt-1 text-sm text-stone-600">
+    Payments that need a decision, oldest first. Times are in Dhaka. Refunds requested here still
+    need another admin's approval.
+  </p>
+
+  @if (lastMessage(); as message) {
+    <p class="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-900" role="status">
+      {{ message }}
+    </p>
+  }
+
+  @if (cases.error()) {
+    <p class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+      We could not load the cases. Please try again in a moment.
+    </p>
+  } @else if (cases.hasValue()) {
+    @let list = cases.value();
+    @if (list.length === 0) {
+      <p class="mt-8 text-center text-stone-600" data-testid="empty">No open cases.</p>
+    } @else {
+      <ul class="mt-6 space-y-4">
+        @for (c of list; track c.id) {
+          <li>
+            <bb-reconciliation-case-card
+              [reconciliationCase]="c"
+              (resolved)="resolved($event)"
+              (outdated)="outdated($event)"
+            />
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <p class="mt-6 text-sm text-stone-600">Loading…</p>
+  }
+</section>

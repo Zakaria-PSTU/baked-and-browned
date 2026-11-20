@@ -47,6 +47,22 @@
       Your order is cancelled.
     </p>
   }
+  @if (paidAfterExpiry(o)) {
+    <section
+      class="mt-6 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-950"
+      aria-labelledby="late-payment-title"
+      data-testid="late-payment"
+    >
+      <h2 id="late-payment-title" class="font-medium">Payment received after order expiry</h2>
+      <p class="mt-1">
+        We received your payment after your order expired. Our team is reviewing the payment and
+        order status. We'll update you once the review is complete.
+      </p>
+      <p class="mt-1">
+        If the order cannot be fulfilled, we'll arrange a refund according to our refund policy.
+      </p>
+    </section>
+  }
   @if (refundNote(o); as note) {
     <p class="mt-6 rounded-md bg-stone-100 px-3 py-2 text-sm" data-testid="refund-note">
       {{ note }}

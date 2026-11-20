@@ -72,7 +72,13 @@ export class AdminDashboardPage {
         verification > 0,
         '/admin/payments',
       ),
-      tile('Reconciliation', String(reconciliation), 'Open cases', reconciliation > 0),
+      tile(
+        'Reconciliation',
+        String(reconciliation),
+        'Open cases',
+        reconciliation > 0,
+        '/admin/reconciliation',
+      ),
       tile('Low stock', String(lowStock), 'Ingredients at or below threshold', lowStock > 0),
     ];
   });

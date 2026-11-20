@@ -66,6 +66,20 @@ export class OrderPage {
     }
   }
 
+  /**
+   * QA-03: the payment arrived after the order expired and the shop is still reviewing it (an open
+   * reconciliation case). Not shown once the case is resolved: a reinstated order is no longer
+   * EXPIRED, a refund shows its own note instead, and a case closed without action ends the review.
+   */
+  protected paidAfterExpiry(order: OrderDetail): boolean {
+    return (
+      order.status === 'EXPIRED' &&
+      order.payment.status === 'SUCCEEDED' &&
+      order.payment.underReview === true &&
+      !order.payment.refundStatus
+    );
+  }
+
   protected statusLabel(order: OrderDetail): string {
     if (
       order.status === 'PENDING_PAYMENT' &&
