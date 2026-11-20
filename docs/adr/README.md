@@ -31,3 +31,4 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0025](0025-absolute-session-lifetime-and-revocation-synchronization.md) | Absolute session lifetime and revocation synchronization | Proposed | 2026-11-20 |
 | [0026](0026-key-bound-refresh-tokens.md) | Key-bound refresh tokens (proof of possession), future | Proposed | 2026-11-20 |
 | [0027](0027-live-sms-provider.md) | Live SMS provider: SSL Wireless ISMS Plus, failed and expired notices | Proposed | 2026-11-20 |
+| [0028](0028-account-state-on-every-request.md) | Check the account's state on every authenticated request | Proposed | 2026-11-20 |
