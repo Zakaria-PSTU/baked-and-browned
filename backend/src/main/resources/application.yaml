@@ -133,6 +133,19 @@ app:
     fake:
       # FakePaymentGateway (dev/test profiles only): where its "hosted page" would live.
       checkout-base-url: http://localhost:4200/dev/fake-gateway
+  notifications:
+    sms:
+      ssl-wireless:
+        # SslWirelessSmsSender (ADR-0027). Off unless enabled; then every value below is required, and the server's
+        # outgoing IP must be whitelisted in the ISMS Plus portal. The token only from the environment:
+        # APP_NOTIFICATIONS_SMS_SSL_WIRELESS_API_TOKEN. Without it, the prod profile has no SmsSender and refuses to start.
+        enabled: false
+        base-url: https://smsplus.sslwireless.com/api/v3
+        api-token:
+        # The sid assigned to the account (APP_NOTIFICATIONS_SMS_SSL_WIRELESS_SENDER_ID).
+        sender-id:
+        connect-timeout: 5s
+        read-timeout: 15s
   rate-limits:
     policies:
       # Per client IP.

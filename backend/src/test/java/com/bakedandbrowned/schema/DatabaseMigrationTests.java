@@ -21,7 +21,8 @@ class DatabaseMigrationTests extends AbstractSchemaTest {
 				"V4__ordering_policy.sql", "V5__payments_manual_refunds.sql", "V6__notifications.sql", "V7__refund_policy.sql",
 				"V8__online_payments.sql", "V9__payment_reconciliation.sql",
 				"V10__option_costs.sql", "V11__disallowed_combinations.sql",
-				"V12__customization_display_order.sql", "V13__absolute_session_lifetime.sql");
+				"V12__customization_display_order.sql", "V13__absolute_session_lifetime.sql",
+				"V14__notice_outcomes.sql");
 		assertThat(history).allSatisfy(row -> assertThat(row.get("success")).isEqualTo(true));
 	}
 
@@ -51,7 +52,7 @@ class DatabaseMigrationTests extends AbstractSchemaTest {
 		Integer seededBeforeTests = jdbc.queryForObject("""
 				SELECT count(*) FROM flyway_schema_history h
 				WHERE h.script LIKE 'V%' AND h.success""", Integer.class);
-		assertThat(seededBeforeTests).isEqualTo(13);
+		assertThat(seededBeforeTests).isEqualTo(14);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isZero();
 	}
