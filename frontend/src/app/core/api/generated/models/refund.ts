@@ -16,8 +16,20 @@ export interface Refund {
   externalReference?: string | null;
   id: Uuid;
   orderId: Uuid;
+
+  /**
+   * v1.7
+   */
+  orderNumber?: string;
   paymentId: Uuid;
   requestReason: string;
+
+  /**
+   * v1.7. The user who requested the refund (the customer for a cancellation,
+   * otherwise the ADMIN); null when the system did. That ADMIN may withdraw
+   * but never approve it.
+   */
+  requestedBy?: Uuid | null;
   requestedByType: ActorType;
   status: RefundStatus;
 }

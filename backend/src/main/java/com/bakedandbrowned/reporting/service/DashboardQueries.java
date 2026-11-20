@@ -27,6 +27,7 @@ import com.bakedandbrowned.reporting.dto.DashboardDtos.DashboardSummary;
  * <li>{@code awaitingPaymentVerification}: the size of the ADMIN verification queue (MANUAL
  * payments whose latest submission is SUBMITTED), matching the payments list filter.</li>
  * <li>{@code openReconciliationCases}: OPEN cases.</li>
+ * <li>{@code refundsToProcess}: refunds REQUESTED (to approve) or APPROVED (to pay out), v1.7.</li>
  * <li>{@code lowStockIngredients}: ingredients with a threshold whose available stock (on hand
  * minus reserved) is at or below it.</li>
  * </ul>
@@ -54,7 +55,8 @@ public class DashboardQueries {
 			   WHERE p.method = 'MANUAL' AND m.status = 'SUBMITTED') AS awaiting_verification,
 			  (SELECT count(*) FROM payment_reconciliation_cases WHERE status = 'OPEN') AS open_cases,
 			  (SELECT count(*) FROM ingredients
-			   WHERE low_stock_threshold IS NOT NULL AND on_hand - reserved <= low_stock_threshold) AS low_stock""";
+			   WHERE low_stock_threshold IS NOT NULL AND on_hand - reserved <= low_stock_threshold) AS low_stock,
+			  (SELECT count(*) FROM refunds WHERE status IN ('REQUESTED', 'APPROVED')) AS refunds_to_process""";
 
 	private final JdbcTemplate jdbc;
 
@@ -78,7 +80,7 @@ public class DashboardQueries {
 				(rs, row) -> new DashboardSummary(rs.getInt("orders_today"), Money.of(rs.getBigDecimal("revenue_today")),
 						rs.getInt("pending_orders"), rs.getInt("preparing_orders"),
 						Money.of(rs.getBigDecimal("collected_today")), rs.getInt("awaiting_verification"),
-						rs.getInt("open_cases"), rs.getInt("low_stock")),
+						rs.getInt("open_cases"), rs.getInt("low_stock"), rs.getInt("refunds_to_process")),
 				from, to, from, to, from, to);
 		if (summary == null) {
 			throw new IllegalStateException("The dashboard query returned no row");

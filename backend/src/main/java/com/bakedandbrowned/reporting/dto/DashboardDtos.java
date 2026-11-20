@@ -15,7 +15,7 @@ public final class DashboardDtos {
 	 */
 	public record DashboardSummary(int ordersToday, Money revenueToday, int pendingOrders, int preparingOrders,
 			Money collectedToday, int awaitingPaymentVerification, int openReconciliationCases,
-			int lowStockIngredients) {
+			int lowStockIngredients, int refundsToProcess) {
 	}
 
 }

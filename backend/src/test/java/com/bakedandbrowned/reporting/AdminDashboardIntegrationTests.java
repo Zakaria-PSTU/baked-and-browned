@@ -59,7 +59,8 @@ class AdminDashboardIntegrationTests extends CheckoutIntegrationTest {
 			.andExpect(jsonPath("$.collectedToday").value(0.0))
 			.andExpect(jsonPath("$.awaitingPaymentVerification").value(0))
 			.andExpect(jsonPath("$.openReconciliationCases").value(0))
-			.andExpect(jsonPath("$.lowStockIngredients").value(0));
+			.andExpect(jsonPath("$.lowStockIngredients").value(0))
+			.andExpect(jsonPath("$.refundsToProcess").value(0));
 	}
 
 	@Test
@@ -139,6 +140,27 @@ class AdminDashboardIntegrationTests extends CheckoutIntegrationTest {
 				.header(HttpHeaders.AUTHORIZATION, admin))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.totalElements").value(1));
+	}
+
+	@Test
+	void refundsWaitingForAnAdminAreCounted() throws Exception {
+		UUID admin2 = userIdOf(admin);
+		for (String status : new String[] { "REQUESTED", "APPROVED", "REJECTED", "COMPLETED" }) {
+			UUID orderId = placeOrder(customer, "MANUAL", slot, line(cookies, 1));
+			jdbc.update("""
+					INSERT INTO refunds (payment_id, order_id, amount, status, request_reason, requested_by_type,
+					  decided_by, decided_at, decision_note, external_reference, completed_at)
+					VALUES (?, ?, 10.00, ?::refund_status, 'Complaint', 'SYSTEM',
+					  CASE WHEN ?::text = 'REQUESTED' THEN NULL ELSE ?::uuid END,
+					  CASE WHEN ?::text = 'REQUESTED' THEN NULL ELSE now() END,
+					  CASE WHEN ?::text = 'REQUESTED' THEN NULL ELSE 'Checked' END,
+					  CASE WHEN ?::text = 'COMPLETED' THEN 'BANK-1' END,
+					  CASE WHEN ?::text = 'COMPLETED' THEN now() END)""", paymentOf(orderId), orderId, status, status,
+					admin2, status, status, status, status);
+		}
+
+		// To approve plus to pay out; rejected and completed ones need nothing more.
+		summary(admin).andExpect(status().isOk()).andExpect(jsonPath("$.refundsToProcess").value(2));
 	}
 
 	@Test

@@ -88,7 +88,8 @@ public final class PaymentDtos {
 
 	/** Contract {@code Refund}. */
 	public record Refund(UUID id, UUID paymentId, UUID orderId, Money amount, String currency, String status,
-			String requestReason, String requestedByType, @Nullable UUID decidedBy, @Nullable Instant decidedAt,
+			String requestReason, String requestedByType, @Nullable UUID requestedBy, String orderNumber,
+			@Nullable UUID decidedBy, @Nullable Instant decidedAt,
 			@Nullable String decisionNote, @Nullable String externalReference, @Nullable Instant completedAt,
 			Instant createdAt) {
 	}

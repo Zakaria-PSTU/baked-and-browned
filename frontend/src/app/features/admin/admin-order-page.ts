@@ -18,6 +18,7 @@ import { formatDhakaDateTime, formatDhakaRange } from '../../shared/dhaka-time';
 import { AdminOrdersApi } from './admin-orders-api';
 import { AdminPaymentsApi } from './admin-payments-api';
 import { ADMIN_STATUS_LABELS, CANCELLABLE, NEXT_STEP } from './order-transitions';
+import { RequestRefundPanel } from './request-refund-panel';
 
 type Pending = 'step' | 'cancel' | 'cash';
 
@@ -31,7 +32,7 @@ type Pending = 'step' | 'cancel' | 'cash';
  */
 @Component({
   selector: 'bb-admin-order-page',
-  imports: [RouterLink, BdtPipe],
+  imports: [RouterLink, BdtPipe, RequestRefundPanel],
   templateUrl: './admin-order-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -165,6 +166,23 @@ export class AdminOrderPage {
           this.stale.set(false);
         }
       });
+  }
+
+  /**
+   * A refund request was opened from the payment panel: as for every action here (QA-02), the
+   * order is read again before the confirmation shows.
+   */
+  protected refundRequested(message: string): void {
+    this.error.set(null);
+    this.done.set(null);
+    this.fetchOrder().subscribe((fresh) => {
+      if (fresh) {
+        this.order.set(fresh);
+      } else {
+        this.stale.set(true);
+      }
+      this.done.set(message);
+    });
   }
 
   /** The order as the server has it now, or `null` if it could not be read. */

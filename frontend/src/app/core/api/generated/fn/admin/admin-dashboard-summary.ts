@@ -49,6 +49,11 @@ export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?
  * Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
  */
 'lowStockIngredients'?: number;
+
+/**
+ * v1.7. Refunds waiting for an ADMIN, REQUESTED (to approve) or APPROVED (to pay out).
+ */
+'refundsToProcess'?: number;
 }>> {
   const rb = new RequestBuilder(rootUrl, adminDashboardSummary.PATH, 'get');
   if (params) {
@@ -96,6 +101,11 @@ export function adminDashboardSummary(http: HttpClient, rootUrl: string, params?
        * Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
        */
       'lowStockIngredients'?: number;
+      
+      /**
+       * v1.7. Refunds waiting for an ADMIN, REQUESTED (to approve) or APPROVED (to pay out).
+       */
+      'refundsToProcess'?: number;
       }>;
     })
   );

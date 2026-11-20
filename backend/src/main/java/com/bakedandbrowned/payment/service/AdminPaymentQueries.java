@@ -103,14 +103,16 @@ public class AdminPaymentQueries {
 
 	static final String REFUND_COLUMNS = """
 			id, payment_id, order_id, amount, currency, status::text AS status, request_reason,
-			requested_by_type::text AS requested_by_type, decided_by, decided_at, decision_note,
-			external_reference, completed_at, created_at""";
+			requested_by_type::text AS requested_by_type, requested_by, decided_by, decided_at, decision_note,
+			external_reference, completed_at, created_at,
+			(SELECT o.order_number FROM orders o WHERE o.id = refunds.order_id) AS order_number""";
 
 	static Refund refund(ResultSet rs) throws SQLException {
 		return new Refund(rs.getObject("id", UUID.class), rs.getObject("payment_id", UUID.class),
 				rs.getObject("order_id", UUID.class), Money.of(rs.getBigDecimal("amount")),
 				rs.getString("currency").strip(), rs.getString("status"), rs.getString("request_reason"),
-				rs.getString("requested_by_type"), rs.getObject("decided_by", UUID.class), instant(rs, "decided_at"),
+				rs.getString("requested_by_type"), rs.getObject("requested_by", UUID.class), rs.getString("order_number"),
+				rs.getObject("decided_by", UUID.class), instant(rs, "decided_at"),
 				rs.getString("decision_note"), rs.getString("external_reference"), instant(rs, "completed_at"),
 				rs.getTimestamp("created_at").toInstant());
 	}

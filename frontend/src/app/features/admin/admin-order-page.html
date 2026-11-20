@@ -170,10 +170,22 @@
               Reference {{ s.transactionReference }} ({{ s.status }})
             </p>
           }
+          @if (!stale()) {
+            <bb-request-refund-panel
+              [payment]="p"
+              [refunds]="o.refunds"
+              (requested)="refundRequested($event)"
+            />
+          }
         </div>
       }
       @if (o.refunds.length > 0) {
-        <h3 class="mt-4 font-medium">Refunds</h3>
+        <h3 class="mt-4 font-medium">
+          Refunds
+          <a routerLink="/admin/refunds" class="ml-2 text-sm font-normal text-amber-800 underline"
+            >Manage</a
+          >
+        </h3>
         @for (r of o.refunds; track r.id) {
           <p class="mt-1 break-words" data-testid="refund">
             {{ r.amount | bdt }} · {{ r.status }} · {{ r.requestReason }}
