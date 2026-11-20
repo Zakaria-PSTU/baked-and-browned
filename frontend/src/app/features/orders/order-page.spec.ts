@@ -219,3 +219,83 @@ describe('OrderPage online payment', () => {
     expect(root.querySelector('[data-testid="paid-online"]')).not.toBeNull();
   });
 });
+
+describe('OrderPage payment received after expiry (QA-03)', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  const latePaid = (
+    payment: Partial<OrderDetail['payment']> = {},
+    overrides: Partial<OrderDetail> = {},
+  ): OrderDetail =>
+    detail({
+      status: 'EXPIRED',
+      paymentStatus: 'SUCCEEDED',
+      paymentMethod: 'ONLINE',
+      cancellable: false,
+      payment: { method: 'ONLINE', status: 'SUCCEEDED', underReview: true, ...payment },
+      ...overrides,
+    });
+
+  const open = async (order: OrderDetail) => {
+    const fixture = TestBed.createComponent(OrderPage);
+    fixture.componentRef.setInput('orderId', order.orderId);
+    await settle();
+    http.expectOne(`/api/v1/orders/${order.orderId}`).flush(order);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    return {
+      late: () => root.querySelector('[data-testid="late-payment"]'),
+      refund: () => root.querySelector('[data-testid="refund-note"]'),
+    };
+  };
+
+  it('explains a late payment while the shop is reviewing it', async () => {
+    const { late, refund } = await open(latePaid());
+    const text = late()?.textContent?.replace(/\s+/g, ' ') ?? '';
+    expect(text).toContain('Payment received after order expiry');
+    expect(text).toContain(
+      "We received your payment after your order expired. Our team is reviewing the payment and order status. We'll update you once the review is complete.",
+    );
+    expect(text).toContain(
+      "If the order cannot be fulfilled, we'll arrange a refund according to our refund policy.",
+    );
+    expect(late()?.getAttribute('aria-labelledby')).toBe('late-payment-title');
+    expect(refund()).toBeNull();
+  });
+
+  it('says nothing once the case was closed without action', async () => {
+    const { late } = await open(latePaid({ underReview: false }));
+    expect(late()).toBeNull();
+  });
+
+  it('says nothing when the server does not report a review (older API)', async () => {
+    const { late } = await open(latePaid({ underReview: undefined }));
+    expect(late()).toBeNull();
+  });
+
+  it('lets the refund note take over once a refund was opened', async () => {
+    const { late, refund } = await open(latePaid({ refundStatus: 'REQUESTED' }));
+    expect(late()).toBeNull();
+    expect(refund()?.textContent).toContain('processing a refund');
+  });
+
+  it('says nothing for an expired order that was never paid, or a reinstated one', async () => {
+    const unpaid = await open(
+      latePaid({ status: 'PENDING', underReview: false }, { paymentStatus: 'PENDING' }),
+    );
+    expect(unpaid.late()).toBeNull();
+    const reinstated = await open(
+      latePaid({ underReview: false }, { orderId: 'o2', status: 'CONFIRMED' }),
+    );
+    expect(reinstated.late()).toBeNull();
+  });
+});

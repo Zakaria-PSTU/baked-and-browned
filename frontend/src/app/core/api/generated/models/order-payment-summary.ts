@@ -14,4 +14,12 @@ export interface OrderPaymentSummary {
   method: PaymentMethod;
   refundStatus?: RefundStatus | null;
   status: PaymentStatus;
+
+  /**
+   * v1.6. True while an open payment reconciliation case exists for
+   * this order, for example a payment that arrived after the order
+   * expired; false once an ADMIN has resolved it. No case details are
+   * exposed to the customer.
+   */
+  underReview?: boolean;
 }

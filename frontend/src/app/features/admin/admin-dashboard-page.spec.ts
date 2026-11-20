@@ -55,6 +55,7 @@ describe('AdminDashboardPage', () => {
       '/admin/orders?status=CONFIRMED',
       '/admin/orders?status=PREPARING',
       '/admin/payments',
+      '/admin/reconciliation',
     ]);
   });
 

@@ -303,6 +303,41 @@ class ReconciliationIntegrationTests extends CheckoutIntegrationTest {
 	}
 
 	@Test
+	void theCustomerSeesALatePaymentUnderReviewOnlyUntilTheCaseIsResolved() throws Exception {
+		UUID paidInTime = onlineOrder();
+		gateway.settle(startSession(paidInTime), GatewayPaymentStatus.SUCCEEDED);
+		age(paidInTime, "3 minutes");
+		assertThat(reconciliation.reconcile(paymentOf(paidInTime))).contains(Outcome.CONFIRMED);
+		customerView(paidInTime).andExpect(jsonPath("$.payment.underReview").value(false));
+
+		UUID closed = expiredOrderPaidLate();
+		UUID refunded = expiredOrderPaidLate();
+		UUID reinstated = expiredOrderPaidLate();
+		for (UUID orderId : List.of(closed, refunded, reinstated)) {
+			customerView(orderId).andExpect(jsonPath("$.status").value("EXPIRED"))
+				.andExpect(jsonPath("$.payment.status").value("SUCCEEDED"))
+				.andExpect(jsonPath("$.payment.refundStatus").isEmpty())
+				.andExpect(jsonPath("$.payment.underReview").value(true));
+		}
+
+		// NO_ACTION leaves the order EXPIRED and paid without a refund: only underReview tells them apart.
+		resolve(admin, caseOf(closed), "NO_ACTION", "Customer contacted; settled outside the shop.")
+			.andExpect(status().isOk());
+		customerView(closed).andExpect(jsonPath("$.status").value("EXPIRED"))
+			.andExpect(jsonPath("$.payment.status").value("SUCCEEDED"))
+			.andExpect(jsonPath("$.payment.refundStatus").isEmpty())
+			.andExpect(jsonPath("$.payment.underReview").value(false));
+
+		resolve(admin, caseOf(refunded), "REQUEST_REFUND", "Slot gone; refund in full.").andExpect(status().isOk());
+		customerView(refunded).andExpect(jsonPath("$.payment.refundStatus").value("REQUESTED"))
+			.andExpect(jsonPath("$.payment.underReview").value(false));
+
+		resolve(admin, caseOf(reinstated), "REINSTATE", "Slot still has room.").andExpect(status().isOk());
+		customerView(reinstated).andExpect(jsonPath("$.status").value("CONFIRMED"))
+			.andExpect(jsonPath("$.payment.underReview").value(false));
+	}
+
+	@Test
 	void resolutionsNeedANoteAndAKnownCase() throws Exception {
 		UUID orderId = expiredOrderPaidLate();
 
@@ -366,6 +401,11 @@ class ReconciliationIntegrationTests extends CheckoutIntegrationTest {
 		return jdbc.queryForList(
 				"SELECT case_type::text FROM payment_reconciliation_cases WHERE order_id = ? AND status = 'OPEN'",
 				String.class, orderId);
+	}
+
+	private ResultActions customerView(UUID orderId) throws Exception {
+		return mockMvc.perform(get("/api/v1/orders/{id}", orderId).header(HttpHeaders.AUTHORIZATION, customer))
+			.andExpect(status().isOk());
 	}
 
 	private ResultActions resolve(String bearer, UUID caseId, String action, String note) throws Exception {

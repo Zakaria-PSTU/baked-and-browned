@@ -87,6 +87,13 @@ export const routes: Routes = [
       import('./features/admin/admin-payments-page').then((m) => m.AdminPaymentsPage),
   },
   {
+    path: 'admin/reconciliation',
+    title: 'Payment reconciliation · Baked & Browned',
+    canMatch: [requireAdmin],
+    loadComponent: () =>
+      import('./features/admin/admin-reconciliation-page').then((m) => m.AdminReconciliationPage),
+  },
+  {
     path: 'admin',
     title: 'Dashboard · Baked & Browned',
     canMatch: [requireAdmin],
