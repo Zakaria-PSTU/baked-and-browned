@@ -26,5 +26,7 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0020](0020-disallowed-combinations.md) | Disallowed option combinations per product | Accepted | 2026-11-18 |
 | [0021](0021-customization-display-order.md) | Per-product display order of customization groups and options | Accepted | 2026-11-18 |
 | [0022](0022-manual-payment-accounts.md) | Manual payment receiving accounts from configuration | Accepted | 2026-11-18 |
+| [0023](0023-refresh-recovery-after-aborted-navigation.md) | Strict refresh rotation with browser-side recovery from aborted navigations (revision 4) | Proposed | 2026-11-20 |
 | [0024](0024-additional-admin-provisioning.md) | Provision additional admins through the operator command (revision 3) | Proposed | 2026-11-19 |
 | [0025](0025-absolute-session-lifetime-and-revocation-synchronization.md) | Absolute session lifetime and revocation synchronization | Proposed | 2026-11-20 |
+| [0026](0026-key-bound-refresh-tokens.md) | Key-bound refresh tokens (proof of possession), future | Proposed | 2026-11-20 |

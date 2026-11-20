@@ -91,6 +91,7 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out jwt-private.pe
 
 - Access tokens: RS256 JWTs, 15 minutes, `kid` header, carrying only the user id and role.
 - Refresh tokens: opaque, stored as SHA-256 hashes, rotated on every refresh. Reusing a rotated token revokes its whole family.
+- QA-01 (ADR-0023 rev 4): the web app sends its refresh with `keepalive` and leaves an in-flight marker, so a reload, navigation or tab close during a refresh no longer signs the user out. A refresh response lost in the network still does (ADR-0026).
 - Sessions (ADR-0025): each refresh extends a session by the role's idle lifetime, never past its absolute end after login. Customers: 14 days idle, 30 days absolute. Admins: 8 hours idle, 12 hours absolute (`app.security.sessions.*`).
 - `refresh_token` cookie: `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`. `XSRF-TOKEN` cookie: readable, echoed by the SPA in `X-CSRF-Token` on refresh and logout.
 - The SPA must send at most one refresh at a time. Two parallel refreshes with the same token count as reuse and end the session.

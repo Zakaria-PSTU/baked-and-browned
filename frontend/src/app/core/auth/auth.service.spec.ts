@@ -5,6 +5,8 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { AuthSession } from './auth-session';
 import { withCrossTabLock } from './cross-tab-lock';
+import { IN_FLIGHT_KEY } from './refresh-recovery';
+import { provideHttpClientRefreshTransport } from './refresh-transport.testing';
 
 const user = { id: 'u1', fullName: 'Nusrat', phone: '+8801712345678', role: 'CUSTOMER' as const };
 const authResponse = (token: string) => ({
@@ -25,10 +27,12 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     csrfCookie = 'csrf-1';
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideHttpClientRefreshTransport(),
         { provide: HttpXsrfTokenExtractor, useValue: { getToken: () => csrfCookie } },
       ],
     });
@@ -122,6 +126,49 @@ describe('AuthService', () => {
       .flush({ title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
     await expect(restored).resolves.toBeUndefined();
     expect(session.isAuthenticated()).toBe(false);
+  });
+
+  it('marks the refresh as in flight while it is sent and clears the marker after', async () => {
+    const result = firstValueFrom(auth.refresh());
+    await tick();
+    const req = http.expectOne('/api/v1/auth/refresh');
+    expect(JSON.parse(localStorage.getItem(IN_FLIGHT_KEY) ?? 'null')).toMatchObject({ xsrf: 'csrf-1' });
+    req.flush(authResponse('t2'));
+    await result;
+    expect(localStorage.getItem(IN_FLIGHT_KEY)).toBeNull();
+  });
+
+  it('clears the marker when the refresh fails', async () => {
+    const result = firstValueFrom(auth.refresh());
+    await tick();
+    http.expectOne('/api/v1/auth/refresh').flush(null, { status: 401, statusText: 'Unauthorized' });
+    await expect(result).rejects.toBeTruthy();
+    expect(localStorage.getItem(IN_FLIGHT_KEY)).toBeNull();
+  });
+
+  it('keeps the marker when no response reached the page (aborted by an unload)', async () => {
+    const result = firstValueFrom(auth.refresh());
+    await tick();
+    http.expectOne('/api/v1/auth/refresh').error(new ProgressEvent('error'));
+    await expect(result).rejects.toBeTruthy();
+    expect(localStorage.getItem(IN_FLIGHT_KEY)).not.toBeNull();
+  });
+
+  it('after an interrupted refresh, waits for the rotated CSRF cookie and sends it', async () => {
+    // The previous page sent a refresh with csrf-1 and unloaded before the response.
+    localStorage.setItem(IN_FLIGHT_KEY, JSON.stringify({ ts: Date.now(), xsrf: 'csrf-1' }));
+    const result = firstValueFrom(auth.refresh());
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    http.expectNone('/api/v1/auth/refresh');
+
+    // The browser stores the keepalive response's cookies.
+    csrfCookie = 'csrf-2';
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const req = http.expectOne('/api/v1/auth/refresh');
+    expect(req.request.headers.get('X-CSRF-Token')).toBe('csrf-2');
+    req.flush(authResponse('t2'));
+    expect(await result).toBe('t2');
+    expect(localStorage.getItem(IN_FLIGHT_KEY)).toBeNull();
   });
 
   it('clears the local session on logout even if the server call fails', async () => {
