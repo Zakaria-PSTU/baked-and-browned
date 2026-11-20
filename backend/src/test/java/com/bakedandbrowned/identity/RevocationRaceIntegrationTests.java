@@ -18,14 +18,16 @@ import com.bakedandbrowned.common.web.ApiException;
 import com.bakedandbrowned.identity.service.AuthService;
 
 /**
- * QA-01 investigation (ADR-0025 draft): does a completed session revocation always leave no
- * usable refresh token, when it races a refresh of the same family?
+ * Regression tests for NEW-1 (ADR-0025, part 1): a completed session revocation leaves no usable
+ * refresh token, even when it races a refresh of the same family, and concurrent reuse detections
+ * end in 401s, not a database deadlock.
  * <p>
  * Each test makes the interleaving deterministic with a temporary trigger in the isolated test
- * database: the refresh transaction, which already holds its row lock, is held for a fixed time
+ * database: the refresh transaction, which already holds its locks, is held for a fixed time
  * inside its INSERT (or a revocation inside its UPDATE), and the competing operation starts
- * during that window. The assertions state the secure invariant, so a failure is evidence of the
- * race. No production code is changed.
+ * during that window. Before the per-family advisory lock in {@link AuthService}, the logout,
+ * reuse-detection and concurrent-reuse tests failed (a live successor survived, or PostgreSQL
+ * reported deadlock 40P01).
  */
 class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 

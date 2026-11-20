@@ -11,6 +11,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,9 +38,11 @@ import com.bakedandbrowned.identity.repository.UserAccountRepository;
  * <li>Login failures are one indistinguishable 401 (unknown account, wrong password, disabled
  * account), and an unknown account still costs one Argon2 verification so timing does not reveal
  * which accounts exist.</li>
- * <li>Each login starts a new refresh family. Refresh locks the presented token, spends it and
- * issues its successor in the same family. Presenting a spent token again revokes the whole
- * family.</li>
+ * <li>Each login starts a new refresh family. Refresh takes the family lock, locks the presented
+ * token, spends it and issues its successor in the same family. Presenting a spent token again
+ * revokes the whole family.</li>
+ * <li>Refresh, logout and reuse revocation all take the same per-family lock first, so a
+ * revocation never misses a successor that a concurrent refresh is still issuing.</li>
  * </ul>
  */
 @Service
@@ -52,6 +55,9 @@ public class AuthService {
 	public static final String INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN";
 
 	static final int MAX_PASSWORD_LENGTH = 128;
+
+	/** First key of the two-int {@code pg_advisory_xact_lock} used for refresh families ("RF"). */
+	static final int FAMILY_LOCK_CLASS = 0x5246;
 
 	private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
@@ -70,11 +76,14 @@ public class AuthService {
 	/** Verified against when the account does not exist, to equalize timing. */
 	private final String timingDummyHash;
 
+	private final JdbcTemplate jdbc;
+
 	public AuthService(UserAccountRepository users, RefreshTokenRepository refreshTokens,
 			PasswordEncoder passwordEncoder, AccessTokenIssuer accessTokens, Clock clock,
-			SecurityProperties properties) {
+			SecurityProperties properties, JdbcTemplate jdbc) {
 		this.users = users;
 		this.refreshTokens = refreshTokens;
+		this.jdbc = jdbc;
 		this.passwordEncoder = passwordEncoder;
 		this.accessTokens = accessTokens;
 		this.clock = clock;
@@ -130,8 +139,10 @@ public class AuthService {
 		if (presentedToken == null || presentedToken.isEmpty()) {
 			throw invalidRefreshToken();
 		}
-		RefreshToken token = refreshTokens.findByTokenHashForUpdate(OpaqueTokens.sha256Hex(presentedToken))
-			.orElseThrow(AuthService::invalidRefreshToken);
+		String hash = OpaqueTokens.sha256Hex(presentedToken);
+		UUID familyId = refreshTokens.findFamilyIdByTokenHash(hash).orElseThrow(AuthService::invalidRefreshToken);
+		lockFamily(familyId);
+		RefreshToken token = refreshTokens.findByTokenHashForUpdate(hash).orElseThrow(AuthService::invalidRefreshToken);
 		Instant now = clock.instant();
 		if (token.isRevoked() || token.isExpiredAt(now)) {
 			throw invalidRefreshToken();
@@ -158,8 +169,21 @@ public class AuthService {
 		if (presentedToken == null || presentedToken.isEmpty()) {
 			return;
 		}
-		refreshTokens.findByTokenHash(OpaqueTokens.sha256Hex(presentedToken))
-			.ifPresent(token -> refreshTokens.revokeFamily(token.getFamilyId(), clock.instant(), RevokeReason.LOGOUT));
+		refreshTokens.findFamilyIdByTokenHash(OpaqueTokens.sha256Hex(presentedToken)).ifPresent(familyId -> {
+			lockFamily(familyId);
+			refreshTokens.revokeFamily(familyId, clock.instant(), RevokeReason.LOGOUT);
+		});
+	}
+
+	/**
+	 * Serializes every operation on one refresh family for the rest of the transaction (ADR-0025).
+	 * A revocation therefore waits for a concurrent rotation to commit and then also revokes its
+	 * successor, and the family lock, always taken first, gives every caller the same lock order.
+	 * The key is the two-int form, namespaced by {@link #FAMILY_LOCK_CLASS}; a hash collision
+	 * between two families only serializes them, it never skips a lock.
+	 */
+	private void lockFamily(UUID familyId) {
+		jdbc.queryForList("SELECT pg_advisory_xact_lock(?, ?)", FAMILY_LOCK_CLASS, familyId.hashCode());
 	}
 
 	/** The authenticated user; 401 if the account no longer exists or was disabled. */
