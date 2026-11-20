@@ -74,6 +74,10 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$[*].id", contains(refundId.toString())))
 			.andExpect(jsonPath("$[0].requestedByType").value("CUSTOMER"))
+			// v1.7: who asked (the customer who cancelled) and for which order.
+			.andExpect(jsonPath("$[0].requestedBy").value(userIdOf(customer).toString()))
+			.andExpect(jsonPath("$[0].orderNumber").value(jdbc.queryForObject(
+					"SELECT order_number FROM orders WHERE id = ?", String.class, orderId)))
 			.andExpect(jsonPath("$[0].amount").value(1310.00));
 
 		decideRefund(refundId, "APPROVE", "Customer cancelled in time").andExpect(status().isOk())
@@ -136,7 +140,9 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 
 		request(paymentOf(orderId), "Reviewed again with the manager").andExpect(status().isCreated())
 			.andExpect(jsonPath("$.status").value("REQUESTED"))
-			.andExpect(jsonPath("$.requestedByType").value("ADMIN"));
+			.andExpect(jsonPath("$.requestedByType").value("ADMIN"))
+			.andExpect(jsonPath("$.requestedBy").value(userIdOf(admin).toString()))
+			.andExpect(jsonPath("$.orderNumber").isString());
 		assertThat(count("refunds")).isEqualTo(2);
 	}
 

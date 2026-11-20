@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Baked & Browned API
-  version: 1.6.0
+  version: 1.7.0
   description: |
     MVP contract for an online bakery in Dhaka. Prices are server-calculated.
     JWT bearer authentication protects customer/admin endpoints. Refresh token
@@ -29,6 +29,9 @@ info:
 
     v1.6, additive: `underReview` on the customer's OrderPaymentSummary, true
     while an open payment reconciliation case exists for the order (QA-03).
+
+    v1.7, additive: `requestedBy` and `orderNumber` on Refund, and
+    `refundsToProcess` on the admin dashboard summary (N-05).
 
     Conventions: money is BDT, serialized with exactly two decimals and
     computed only by the server. Dates (`format: date`) are Asia/Dhaka
@@ -1344,6 +1347,9 @@ paths:
                   lowStockIngredients:
                     type: integer
                     description: Ingredients whose available stock (on hand minus reserved) is at or below their threshold.
+                  refundsToProcess:
+                    type: integer
+                    description: v1.7. Refunds waiting for an ADMIN, REQUESTED (to approve) or APPROVED (to pay out).
         '403': {$ref: '#/components/responses/Forbidden'}
   /admin/reports/daily-sales:
     get:
@@ -2147,6 +2153,15 @@ components:
         status: {$ref: '#/components/schemas/RefundStatus'}
         requestReason: {type: string}
         requestedByType: {$ref: '#/components/schemas/ActorType'}
+        requestedBy:
+          allOf:
+            - {$ref: '#/components/schemas/Uuid'}
+          nullable: true
+          description: |
+            v1.7. The user who requested the refund (the customer for a cancellation,
+            otherwise the ADMIN); null when the system did. That ADMIN may withdraw
+            but never approve it.
+        orderNumber: {type: string, description: v1.7}
         decidedBy:
           allOf:
             - {$ref: '#/components/schemas/Uuid'}

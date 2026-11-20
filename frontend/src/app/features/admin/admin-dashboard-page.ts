@@ -51,6 +51,7 @@ export class AdminDashboardPage {
     const verification = s.awaitingPaymentVerification ?? 0;
     const reconciliation = s.openReconciliationCases ?? 0;
     const lowStock = s.lowStockIngredients ?? 0;
+    const refunds = s.refundsToProcess ?? 0;
     return [
       tile(
         'To prepare',
@@ -79,6 +80,7 @@ export class AdminDashboardPage {
         reconciliation > 0,
         '/admin/reconciliation',
       ),
+      tile('Refunds', String(refunds), 'To approve or pay out', refunds > 0, '/admin/refunds'),
       tile('Low stock', String(lowStock), 'Ingredients at or below threshold', lowStock > 0),
     ];
   });

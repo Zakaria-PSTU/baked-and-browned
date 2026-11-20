@@ -42,13 +42,14 @@ describe('AdminDashboardPage', () => {
       awaitingPaymentVerification: 4,
       openReconciliationCases: 0,
       lowStockIngredients: 1,
+      refundsToProcess: 2,
     });
 
-    expect(values(el)).toEqual(['3', '৳1,25,000.00', '৳1,310.00', '2', '1', '4', '0', '1']);
+    expect(values(el)).toEqual(['3', '৳1,25,000.00', '৳1,310.00', '2', '1', '4', '0', '2', '1']);
     const flagged = [...el.querySelectorAll('[data-attention="true"]')].map(
       (t) => t.querySelector('p')?.textContent,
     );
-    expect(flagged).toEqual(['Payments to verify', 'Low stock']);
+    expect(flagged).toEqual(['Payments to verify', 'Refunds', 'Low stock']);
     // Only queues with a screen link to it.
     const links = [...el.querySelectorAll('li a')].map((a) => a.getAttribute('href'));
     expect(links).toEqual([
@@ -56,6 +57,7 @@ describe('AdminDashboardPage', () => {
       '/admin/orders?status=PREPARING',
       '/admin/payments',
       '/admin/reconciliation',
+      '/admin/refunds',
     ]);
   });
 
@@ -67,7 +69,7 @@ describe('AdminDashboardPage', () => {
       preparingOrders: 0,
     });
 
-    expect(values(el)).toEqual(['0', '৳0.00', '৳0.00', '0', '0', '0', '0', '0']);
+    expect(values(el)).toEqual(['0', '৳0.00', '৳0.00', '0', '0', '0', '0', '0', '0']);
     expect(el.querySelectorAll('[data-attention="true"]').length).toBe(0);
   });
 

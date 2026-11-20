@@ -218,4 +218,128 @@ describe('AdminOrderPage', () => {
     expect(stale()).toBeNull();
     expect(button('Start baking').disabled).toBe(false);
   });
+
+  describe('requesting a refund (N-05)', () => {
+    const REQUEST_URL = '/api/v1/admin/payments/pay1/refunds';
+    const panel = () => root.querySelector('[data-testid="request-refund"]');
+    const alertText = () => root.querySelector('[role="alert"]')?.textContent?.trim() ?? '';
+
+    async function type(selector: string, value: string): Promise<void> {
+      const field = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+      field.value = value;
+      field.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    }
+
+    async function click(label: string): Promise<void> {
+      button(label).click();
+      await fixture.whenStable();
+    }
+
+    const requestedRefund = {
+      id: 'r1',
+      paymentId: 'pay1',
+      orderId: 'o1',
+      orderNumber: 'BB-20261120-000001',
+      amount: 1310,
+      currency: 'BDT' as const,
+      status: 'REQUESTED' as const,
+      requestReason: 'Cake arrived damaged',
+      requestedByType: 'ADMIN' as const,
+      requestedBy: 'admin-1',
+      createdAt: '2026-11-20T08:00:00Z',
+    };
+
+    it('requests everything left, then shows the order with the open request', async () => {
+      await open(order('DELIVERED', 'SUCCEEDED'));
+      await click('Request refund');
+      expect(panel()?.textContent).toContain('Left to refund: ৳1,310.00');
+
+      await click('Review request');
+      expect(alertText()).toContain('Give the reason');
+      await type('#refund-reason-pay1', '  Cake arrived damaged ');
+      await click('Review request');
+      expect(root.querySelector('[data-testid="refund-request-confirm"]')?.textContent).toContain(
+        'Request a refund of ৳1,310.00? Another admin must approve it',
+      );
+
+      button('Yes, request the refund').click();
+      const req = http.expectOne(REQUEST_URL);
+      expect(req.request.method).toBe('POST');
+      // A full refund names no amount, so the server refunds exactly what is left.
+      expect(req.request.body).toEqual({ reason: 'Cake arrived damaged' });
+      req.flush(requestedRefund, { status: 201, statusText: 'Created' });
+      await settle();
+      await fixture.whenStable();
+      expect(banner()).toBeNull();
+
+      http
+        .expectOne(ORDER_URL)
+        .flush({ ...order('DELIVERED', 'SUCCEEDED'), refunds: [requestedRefund] });
+      await fixture.whenStable();
+      expect(banner()).toContain('Another admin must approve it before any money is sent.');
+      expect(root.querySelector('[data-testid="refund"]')?.textContent).toContain('REQUESTED');
+      // One open refund per payment: no second request.
+      expect(panel()).toBeNull();
+    });
+
+    it('checks a partial amount, and shows the server refusing it', async () => {
+      const partlyRefunded = order('DELIVERED', 'SUCCEEDED');
+      partlyRefunded.payments = [{ ...partlyRefunded.payments[0], refundedAmount: 810 }];
+      await open(partlyRefunded);
+      await click('Request refund');
+      expect(panel()?.textContent).toContain('Left to refund: ৳500.00');
+      await type('#refund-reason-pay1', 'One box missing');
+
+      for (const [text, message] of [
+        ['12.345', 'Enter the amount in taka'],
+        ['abc', 'Enter the amount in taka'],
+        ['0', 'more than 0 and at most what is left'],
+        ['500.01', 'more than 0 and at most what is left'],
+      ]) {
+        await type('#refund-amount-pay1', text);
+        await click('Review request');
+        expect(alertText()).toContain(message);
+        http.expectNone(REQUEST_URL);
+      }
+
+      await type('#refund-amount-pay1', '250.50');
+      await click('Review request');
+      expect(root.querySelector('[data-testid="refund-request-confirm"]')?.textContent).toContain(
+        '৳250.50',
+      );
+      button('Yes, request the refund').click();
+      const req = http.expectOne(REQUEST_URL);
+      expect(req.request.body).toEqual({ reason: 'One box missing', amount: 250.5 });
+      req.flush(
+        {
+          title: 'Conflict',
+          status: 409,
+          code: 'REFUND_ALREADY_OPEN',
+          detail: 'This payment already has a refund in progress.',
+        },
+        { status: 409, statusText: 'Conflict' },
+      );
+      await fixture.whenStable();
+      expect(alertText()).toBe('This payment already has a refund in progress.');
+      expect(banner()).toBeNull();
+      // The form keeps what was typed, for another try.
+      expect(root.querySelector<HTMLInputElement>('#refund-amount-pay1')?.value).toBe('250.50');
+    });
+
+    it('is not offered for a payment not received, or one with a refund in progress', async () => {
+      await open(order('DELIVERED'));
+      expect(panel()).toBeNull();
+
+      fixture.componentRef.setInput('orderId', 'o2');
+      await settle();
+      http.expectOne('/api/v1/admin/orders/o2').flush({
+        ...order('DELIVERED', 'SUCCEEDED'),
+        orderId: 'o2',
+        refunds: [{ ...requestedRefund, status: 'APPROVED' as const }],
+      });
+      await fixture.whenStable();
+      expect(panel()).toBeNull();
+    });
+  });
 });
