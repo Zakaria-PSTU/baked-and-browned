@@ -25,7 +25,12 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 	@Query("select t from RefreshToken t join fetch t.user where t.tokenHash = :hash")
 	Optional<RefreshToken> findByTokenHashForUpdate(@Param("hash") String hash);
 
-	Optional<RefreshToken> findByTokenHash(String hash);
+	/**
+	 * The family of the token with this hash, without loading or locking the token, so the caller
+	 * can take the family lock before it reads the token's state.
+	 */
+	@Query("select t.familyId from RefreshToken t where t.tokenHash = :hash")
+	Optional<UUID> findFamilyIdByTokenHash(@Param("hash") String hash);
 
 	/** Revokes every still-active token of the family; returns how many were revoked. */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
