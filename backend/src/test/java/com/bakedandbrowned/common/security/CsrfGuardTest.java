@@ -16,8 +16,12 @@ import jakarta.servlet.http.Cookie;
 
 class CsrfGuardTest {
 
+	private static final SecurityProperties.Sessions SESSIONS = new SecurityProperties.Sessions(
+			new SecurityProperties.SessionLifetime(Duration.ofDays(14), Duration.ofDays(30)),
+			new SecurityProperties.SessionLifetime(Duration.ofHours(8), Duration.ofHours(12)));
+
 	private final CsrfGuard guard = new CsrfGuard(new SecurityProperties(
-			new SecurityProperties.Jwt("iss", "aud", Duration.ofMinutes(15), "kid", null, true), Duration.ofDays(14), true,
+			new SecurityProperties.Jwt("iss", "aud", Duration.ofMinutes(15), "kid", null, true), SESSIONS, true,
 			List.of("https://bakedandbrowned.com.bd")));
 
 	@Test

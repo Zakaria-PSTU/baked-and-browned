@@ -180,7 +180,7 @@ def check_sql(db_md: str, blocks: dict[str, str]) -> None:
                 "V4__ordering_policy.sql", "V5__payments_manual_refunds.sql", "V6__notifications.sql",
                 "V7__refund_policy.sql", "V8__online_payments.sql", "V9__payment_reconciliation.sql",
                 "V10__option_costs.sql", "V11__disallowed_combinations.sql",
-                "V12__customization_display_order.sql"]
+                "V12__customization_display_order.sql", "V13__absolute_session_lifetime.sql"]
     check(list(blocks) == expected, f"documented migrations in order: {list(blocks)}")
     for name, sql in blocks.items():
         try:

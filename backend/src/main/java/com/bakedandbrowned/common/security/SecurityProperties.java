@@ -12,18 +12,52 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * come only from the environment or a secret store.
  *
  * @param jwt access-token signing and validation
- * @param refreshTokenTtl lifetime of each refresh token; every rotation issues a new one
+ * @param sessions per-role refresh-session lifetimes (ADR-0025)
  * @param secureCookies {@code Secure} flag on auth cookies; only ever false for plain-HTTP tests
  * @param allowedOrigins exact {@code Origin} values accepted on cookie-authenticated endpoints
  * (refresh, logout)
  */
 @ConfigurationProperties("app.security")
-public record SecurityProperties(Jwt jwt, Duration refreshTokenTtl, boolean secureCookies, List<String> allowedOrigins) {
+public record SecurityProperties(Jwt jwt, Sessions sessions, boolean secureCookies, List<String> allowedOrigins) {
 
 	public SecurityProperties {
 		Objects.requireNonNull(jwt, "app.security.jwt must be configured");
-		Objects.requireNonNull(refreshTokenTtl, "app.security.refresh-token-ttl must be configured");
+		Objects.requireNonNull(sessions, "app.security.sessions must be configured");
 		allowedOrigins = allowedOrigins == null ? List.of() : List.copyOf(allowedOrigins);
+	}
+
+	/** {@code app.security.sessions.*}: the refresh-session lifetimes of each role. */
+	public record Sessions(SessionLifetime customer, SessionLifetime admin) {
+
+		public Sessions {
+			Objects.requireNonNull(customer, "app.security.sessions.customer must be configured");
+			Objects.requireNonNull(admin, "app.security.sessions.admin must be configured");
+		}
+
+	}
+
+	/**
+	 * One role's refresh-session lifetime. Each refresh extends the session by {@code idle}, but
+	 * never past {@code absolute} after the login that started it.
+	 *
+	 * @param idle how long a session survives without a refresh
+	 * @param absolute the session's maximum age, however often it is refreshed
+	 */
+	public record SessionLifetime(Duration idle, Duration absolute) {
+
+		public SessionLifetime {
+			Objects.requireNonNull(idle, "session idle lifetime must be configured");
+			Objects.requireNonNull(absolute, "session absolute lifetime must be configured");
+			if (idle.isNegative() || idle.isZero() || absolute.isNegative() || absolute.isZero()) {
+				throw new IllegalArgumentException("session lifetimes must be positive: idle=" + idle + ", absolute="
+						+ absolute);
+			}
+			if (idle.compareTo(absolute) > 0) {
+				throw new IllegalArgumentException("session idle lifetime " + idle
+						+ " must not exceed the absolute lifetime " + absolute);
+			}
+		}
+
 	}
 
 	/**

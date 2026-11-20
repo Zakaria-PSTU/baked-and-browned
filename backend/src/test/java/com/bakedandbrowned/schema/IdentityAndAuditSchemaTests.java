@@ -46,18 +46,32 @@ class IdentityAndAuditSchemaTests extends AbstractSchemaTest {
 	void refreshTokenRequiresFamilyForReuseDetection() {
 		UUID userId = user();
 		assertRejectedWith(NOT_NULL_VIOLATION, "refresh_tokens", () -> jdbc.update("""
-				INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-				VALUES (?, repeat('b', 64), now() + interval '7 days')""", userId));
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_expires_at)
+				VALUES (?, repeat('b', 64), now() + interval '7 days', now() + interval '30 days')""", userId));
 
 		UUID first = jdbc.queryForObject("""
-				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id)
-				VALUES (?, repeat('c', 64), now() + interval '7 days', gen_random_uuid()) RETURNING id""",
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at)
+				VALUES (?, repeat('c', 64), now() + interval '7 days', gen_random_uuid(), now() + interval '30 days')
+				RETURNING id""",
 				UUID.class, userId);
 		jdbc.update("""
-				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id)
-				SELECT user_id, repeat('d', 64), expires_at, family_id FROM refresh_tokens WHERE id = ?""", first);
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at)
+				SELECT user_id, repeat('d', 64), expires_at, family_id, family_expires_at FROM refresh_tokens
+				WHERE id = ?""", first);
 		assertThat(jdbc.queryForObject("SELECT count(DISTINCT family_id) FROM refresh_tokens", Integer.class))
 			.isEqualTo(1);
+	}
+
+	@Test
+	void refreshTokenNeverOutlivesItsFamily() {
+		UUID userId = user();
+		assertRejectedWith(NOT_NULL_VIOLATION, "refresh_tokens", () -> jdbc.update("""
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id)
+				VALUES (?, repeat('e', 64), now() + interval '7 days', gen_random_uuid())""", userId));
+		assertRejectedBy("ck_refresh_within_family", () -> jdbc.update("""
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at)
+				VALUES (?, repeat('f', 64), now() + interval '7 days', gen_random_uuid(), now() + interval '1 day')""",
+				userId));
 	}
 
 	@Test

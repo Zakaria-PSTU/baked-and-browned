@@ -694,6 +694,34 @@ ALTER TABLE order_item_customizations
 ```
 Readers sort by `display_order` and then by the previous keys (group code, option name; group name, option name for snapshots), so ties and pre-V12 rows keep their old order.
 
+## V13 — absolute session lifetime (`V13__absolute_session_lifetime.sql`)
+ADR-0025: every refresh family ends a fixed time after its login, however often it is refreshed.
+```sql
+-- Absolute session lifetime (ADR-0025): each refresh family ends at family_expires_at, set at login
+-- to login time + the role's absolute lifetime and copied to every successor. A token's own expiry
+-- (now + the role's idle lifetime at issue) never passes it.
+ALTER TABLE refresh_tokens ADD COLUMN family_expires_at TIMESTAMPTZ;
+
+-- Existing families end their role's absolute lifetime after their first token (the login): 30 days
+-- for customers, 12 hours for admins, the defaults of app.security.sessions at this migration. The
+-- cleanup job deletes only whole families, so the first token of every family is still present.
+UPDATE refresh_tokens t
+SET family_expires_at = f.started_at
+    + CASE WHEN u.role = 'ADMIN' THEN interval '12 hours' ELSE interval '30 days' END
+FROM (SELECT family_id, min(created_at) AS started_at FROM refresh_tokens GROUP BY family_id) f,
+     users u
+WHERE t.family_id = f.family_id AND u.id = t.user_id;
+
+-- Tokens that would outlive their family end with it; admin sessions older than 12 hours are
+-- refused at their next refresh.
+UPDATE refresh_tokens SET expires_at = family_expires_at WHERE expires_at > family_expires_at;
+
+ALTER TABLE refresh_tokens
+ ALTER COLUMN family_expires_at SET NOT NULL,
+ ADD CONSTRAINT ck_refresh_within_family CHECK (expires_at <= family_expires_at);
+```
+`expires_at` is the idle (rolling) end of one token; `family_expires_at` is the absolute end of its session. The service enforces that every token of a family carries the same `family_expires_at`.
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.
@@ -710,7 +738,7 @@ Readers sort by `display_order` and then by the previous keys (group code, optio
 
 ## Deferred migrations
 1. `ingredient_lots`, expiry and wastage ledger.
-2. (Done: option-level ingredients in V10, disallowed combinations in V11, display order in V12.)
+2. (Done: option-level ingredients in V10, disallowed combinations in V11, display order in V12, absolute session lifetime in V13.)
 3. Additional reporting indexes once query patterns are measured.
 
 ## Example atomic reservations
