@@ -46,7 +46,15 @@ app:
       # APP_SECURITY_JWT_PRIVATE_KEY. Startup fails without it unless allow-ephemeral-key is true.
       private-key:
       allow-ephemeral-key: false
-    refresh-token-ttl: 14d
+    # Refresh sessions (ADR-0025). Each refresh extends a session by `idle`, never past `absolute`
+    # after its login. V13 backfilled pre-existing sessions with the absolute values below (30d, 12h).
+    sessions:
+      customer:
+        idle: 14d
+        absolute: 30d
+      admin:
+        idle: 8h
+        absolute: 12h
     # Expired families are deleted this long after their last token expired (RefreshTokenCleanup).
     refresh-token-retention: 7d
     refresh-token-cleanup-cron: "0 17 * * * *"

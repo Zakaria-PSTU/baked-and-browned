@@ -41,7 +41,8 @@ One modular monolith initially. No Kafka, Redis or Kubernetes in MVP. Single API
 - ADMIN accounts are provisioned out of band by an operator-run one-off command that reads credentials from the environment at run time and refuses to run if an ADMIN already exists. No credentials in migrations, seed data or source control.
 - Passwords hashed with Argon2id; server enforces 12–128 characters.
 - JWT access tokens: 15 minutes, signed asymmetrically (key id in header, key from secret store); validate issuer, audience, expiry, signature and authorities.
-- Rotating opaque refresh tokens: store SHA-256 hash; Secure HttpOnly `SameSite=Strict` cookie scoped to `/api/v1/auth`. Each rotation records `replaced_by_id`/`used_at`; presenting a used token revokes the whole `family_id`.
+- Rotating opaque refresh tokens: store SHA-256 hash; Secure HttpOnly `SameSite=Strict` cookie scoped to `/api/v1/auth`. Each rotation records `replaced_by_id`/`used_at`; presenting a used token revokes the whole `family_id`. Refresh, logout and reuse revocation serialize on a per-family advisory lock (ADR-0025).
+- Session lifetime (ADR-0025): a family ends `family_expires_at` after login (CUSTOMER 30 d, ADMIN 12 h); each token expires after the role's idle lifetime (CUSTOMER 14 d, ADMIN 8 h) but never after `family_expires_at`. The cookies' `Max-Age` is the token's remaining lifetime.
 - CSRF: double-submit. Login/refresh set a readable `XSRF-TOKEN` cookie; `/auth/refresh` and `/auth/logout` require the `X-CSRF-Token` header to match, plus an `Origin` allow-list check. Bearer-authenticated endpoints do not use cookies and are not CSRF-sensitive.
 - Default deny: only the public endpoints listed in the contract are `permitAll`; `/admin/**` requires ADMIN at URL and method level. Object ownership checked in services; non-owned orders return 404.
 - Admin MFA is required before production launch (Phase 5).

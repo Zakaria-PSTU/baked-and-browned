@@ -53,7 +53,10 @@ class JwtSigningKeyTest {
 	private static SecurityProperties properties(String privateKey, boolean ephemeral) {
 		return new SecurityProperties(
 				new SecurityProperties.Jwt("iss", "aud", Duration.ofMinutes(15), "kid", privateKey, ephemeral),
-				Duration.ofDays(14), true, List.of());
+				new SecurityProperties.Sessions(
+						new SecurityProperties.SessionLifetime(Duration.ofDays(14), Duration.ofDays(30)),
+						new SecurityProperties.SessionLifetime(Duration.ofHours(8), Duration.ofHours(12))),
+				true, List.of());
 	}
 
 	private static String pem(byte[] pkcs8) {

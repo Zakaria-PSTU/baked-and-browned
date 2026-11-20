@@ -87,7 +87,7 @@ public class AuthController {
 	}
 
 	private AuthResponse startSession(AuthSession session, HttpServletResponse response) {
-		cookies.setSession(response, session.refreshToken());
+		cookies.setSession(response, session.refreshToken(), session.refreshTokenLifetime());
 		return session.response();
 	}
 

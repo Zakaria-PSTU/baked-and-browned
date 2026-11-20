@@ -43,6 +43,8 @@ import com.bakedandbrowned.identity.repository.UserAccountRepository;
  * revokes the whole family.</li>
  * <li>Refresh, logout and reuse revocation all take the same per-family lock first, so a
  * revocation never misses a successor that a concurrent refresh is still issuing.</li>
+ * <li>Each family ends a fixed time after its login (the role's absolute lifetime). A refresh
+ * extends it by the role's idle lifetime, never past that end (ADR-0025).</li>
  * </ul>
  */
 @Service
@@ -71,7 +73,7 @@ public class AuthService {
 
 	private final Clock clock;
 
-	private final Duration refreshTokenTtl;
+	private final SecurityProperties.Sessions sessions;
 
 	/** Verified against when the account does not exist, to equalize timing. */
 	private final String timingDummyHash;
@@ -87,7 +89,7 @@ public class AuthService {
 		this.passwordEncoder = passwordEncoder;
 		this.accessTokens = accessTokens;
 		this.clock = clock;
-		this.refreshTokenTtl = properties.refreshTokenTtl();
+		this.sessions = properties.sessions();
 		this.timingDummyHash = passwordEncoder.encode(OpaqueTokens.generate());
 	}
 
@@ -127,7 +129,9 @@ public class AuthService {
 		if (!verified || !account.get().isEnabled()) {
 			throw ApiException.unauthorized(INVALID_CREDENTIALS, "The phone, email or password is incorrect.");
 		}
-		return startSession(account.get(), UUID.randomUUID()).session();
+		UserAccount user = account.get();
+		Instant now = clock.instant();
+		return startSession(user, UUID.randomUUID(), now.plus(lifetime(user).absolute()), now).session();
 	}
 
 	/**
@@ -158,7 +162,7 @@ public class AuthService {
 			refreshTokens.revokeFamily(token.getFamilyId(), now, RevokeReason.ACCOUNT_DISABLED);
 			throw invalidRefreshToken();
 		}
-		Started successor = startSession(user, token.getFamilyId());
+		Started successor = startSession(user, token.getFamilyId(), token.getFamilyExpiresAt(), now);
 		token.markReplaced(now, successor.refreshToken().getId());
 		return successor.session();
 	}
@@ -195,14 +199,27 @@ public class AuthService {
 			.orElseThrow(() -> ApiException.unauthorized("UNAUTHENTICATED", "Authentication is required."));
 	}
 
-	private Started startSession(UserAccount user, UUID familyId) {
+	/**
+	 * Issues the family's next refresh token. It expires after the role's idle lifetime, but never
+	 * after {@code familyExpiresAt} (ADR-0025), and the cookie lives exactly as long as the token.
+	 */
+	private Started startSession(UserAccount user, UUID familyId, Instant familyExpiresAt, Instant now) {
 		String raw = OpaqueTokens.generate();
-		Instant expiresAt = clock.instant().plus(refreshTokenTtl);
+		Instant idleEnd = now.plus(lifetime(user).idle());
+		Instant expiresAt = idleEnd.isBefore(familyExpiresAt) ? idleEnd : familyExpiresAt;
 		RefreshToken stored = refreshTokens
-			.save(RefreshToken.issue(user, OpaqueTokens.sha256Hex(raw), familyId, expiresAt));
+			.save(RefreshToken.issue(user, OpaqueTokens.sha256Hex(raw), familyId, expiresAt, familyExpiresAt));
 		AuthResponse response = AuthResponse.bearer(accessTokens.issue(user), accessTokens.ttlSeconds(),
 				UserResponse.from(user));
-		return new Started(new AuthSession(response, raw), stored);
+		return new Started(new AuthSession(response, raw, Duration.between(now, expiresAt)), stored);
+	}
+
+	/** The session lifetime of the user's current role. */
+	private SecurityProperties.SessionLifetime lifetime(UserAccount user) {
+		return switch (user.getRole()) {
+			case CUSTOMER -> sessions.customer();
+			case ADMIN -> sessions.admin();
+		};
 	}
 
 	private record Started(AuthSession session, RefreshToken refreshToken) {

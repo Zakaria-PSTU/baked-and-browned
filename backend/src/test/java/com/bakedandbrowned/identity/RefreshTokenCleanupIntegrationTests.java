@@ -42,8 +42,9 @@ class RefreshTokenCleanupIntegrationTests extends IdentityIntegrationTest {
 	}
 
 	private UUID token(UUID user, UUID family, String expiresAtSql, UUID replacedBy) {
-		return jdbc.queryForObject("INSERT INTO refresh_tokens (user_id, token_hash, family_id, expires_at, used_at, "
-				+ "replaced_by_id) VALUES (?, ?, ?, " + expiresAtSql + ", " + (replacedBy == null ? "NULL" : "now()")
+		return jdbc.queryForObject("INSERT INTO refresh_tokens (user_id, token_hash, family_id, expires_at, "
+				+ "family_expires_at, used_at, replaced_by_id) VALUES (?, ?, ?, " + expiresAtSql + ", " + expiresAtSql
+				+ ", " + (replacedBy == null ? "NULL" : "now()")
 				+ ", ?) RETURNING id", UUID.class, user, UUID.randomUUID().toString().replace("-", "").repeat(2), family,
 				replacedBy);
 	}

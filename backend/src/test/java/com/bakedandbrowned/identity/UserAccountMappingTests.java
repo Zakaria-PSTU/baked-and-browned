@@ -51,7 +51,8 @@ class UserAccountMappingTests extends IdentityIntegrationTest {
 		UserAccount user = UserAccount.create("Mapping User", null, PhoneNumber.of(phone()), "hash", Role.CUSTOMER);
 		entityManager.persist(user);
 		String hash = "a".repeat(64);
-		RefreshToken token = RefreshToken.issue(user, hash, UUID.randomUUID(), Instant.now().plusSeconds(60));
+		RefreshToken token = RefreshToken.issue(user, hash, UUID.randomUUID(), Instant.now().plusSeconds(60),
+				Instant.now().plusSeconds(120));
 		entityManager.persist(token);
 		entityManager.flush();
 		entityManager.clear();

@@ -46,6 +46,10 @@ public class RefreshToken {
 	@Column(name = "expires_at", nullable = false, updatable = false)
 	private Instant expiresAt;
 
+	/** The family's absolute end (ADR-0025): set at login, copied to every successor. */
+	@Column(name = "family_expires_at", nullable = false, updatable = false)
+	private Instant familyExpiresAt;
+
 	@Column(name = "revoked_at")
 	private @Nullable Instant revokedAt;
 
@@ -65,15 +69,21 @@ public class RefreshToken {
 	protected RefreshToken() {
 	}
 
-	private RefreshToken(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt) {
+	private RefreshToken(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt,
+			Instant familyExpiresAt) {
+		if (expiresAt.isAfter(familyExpiresAt)) {
+			throw new IllegalArgumentException("a refresh token must not outlive its family");
+		}
 		this.user = user;
 		this.tokenHash = tokenHash;
 		this.familyId = familyId;
 		this.expiresAt = expiresAt;
+		this.familyExpiresAt = familyExpiresAt;
 	}
 
-	public static RefreshToken issue(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt) {
-		return new RefreshToken(user, tokenHash, familyId, expiresAt);
+	public static RefreshToken issue(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt,
+			Instant familyExpiresAt) {
+		return new RefreshToken(user, tokenHash, familyId, expiresAt, familyExpiresAt);
 	}
 
 	public boolean isRevoked() {
@@ -108,6 +118,10 @@ public class RefreshToken {
 
 	public Instant getExpiresAt() {
 		return expiresAt;
+	}
+
+	public Instant getFamilyExpiresAt() {
+		return familyExpiresAt;
 	}
 
 	public @Nullable Instant getRevokedAt() {

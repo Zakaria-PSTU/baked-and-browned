@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -139,7 +140,57 @@ class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 		assertThat(liveTokens()).isZero();
 	}
 
+	/**
+	 * Without injected delays: many rounds of a logout, and of a reuse detection, started together
+	 * with a refresh of the same family. Whatever the interleaving, the family ends with no usable
+	 * token and every call ends in a success or a 401.
+	 */
+	@Test
+	void revocationsStartedTogetherWithARefreshNeverLeaveAUsableToken() throws Exception {
+		for (int round = 0; round < ROUNDS; round++) {
+			Session session = login(register(phone(), null), PASSWORD);
+			String spent = session.refreshToken();
+			String current = auth.refresh(spent).refreshToken();
+			boolean viaLogout = round % 2 == 0;
+
+			List<String> results = together(() -> attempt(() -> auth.refresh(current)), () -> viaLogout
+					? attempt(() -> {
+						auth.logout(current);
+						return null;
+					})
+					: attempt(() -> auth.refresh(spent)));
+
+			assertThat(results).as("round %d (%s)", round, viaLogout ? "logout" : "reuse").allMatch(
+					r -> r.equals("OK") || r.equals("401"));
+			assertThat(liveTokens()).as("round %d (%s): live tokens", round, viaLogout ? "logout" : "reuse").isZero();
+			jdbc.execute("TRUNCATE users CASCADE");
+		}
+	}
+
 	// ------------------------------------------------------------------ helpers
+
+	private static final int ROUNDS = 20;
+
+	/** Starts both calls at the same moment. */
+	private static List<String> together(Callable<String> first, Callable<String> second) throws Exception {
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			CountDownLatch start = new CountDownLatch(1);
+			Future<String> a = pool.submit(() -> {
+				start.await();
+				return first.call();
+			});
+			Future<String> b = pool.submit(() -> {
+				start.await();
+				return second.call();
+			});
+			start.countDown();
+			return List.of(a.get(30, TimeUnit.SECONDS), b.get(30, TimeUnit.SECONDS));
+		}
+		finally {
+			pool.shutdown();
+		}
+	}
 
 	/** Every new refresh token's INSERT waits {@link #HOLD_MS} inside the refreshing transaction. */
 	private void delayInsertsOfRefreshTokens() {

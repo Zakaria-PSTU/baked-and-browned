@@ -32,19 +32,19 @@ class AuthCookies {
 
 	private final boolean secure;
 
-	private final Duration maxAge;
-
 	AuthCookies(SecurityProperties properties) {
 		this.secure = properties.secureCookies();
-		// Same lifetime as the refresh token row (AuthService), so the cookie never outlives it by much.
-		this.maxAge = properties.refreshTokenTtl();
 	}
 
 	@Nullable String refreshToken(HttpServletRequest request) {
 		return CsrfGuard.cookie(request, REFRESH_COOKIE);
 	}
 
-	void setSession(HttpServletResponse response, String refreshToken) {
+	/**
+	 * {@code maxAge} is the refresh token's remaining lifetime (AuthService), so the cookies never
+	 * outlive the token, including near the session's absolute end (ADR-0025).
+	 */
+	void setSession(HttpServletResponse response, String refreshToken, Duration maxAge) {
 		response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie(refreshToken, maxAge).toString());
 		response.addHeader(HttpHeaders.SET_COOKIE, csrfCookie(OpaqueTokens.generate(), maxAge).toString());
 	}

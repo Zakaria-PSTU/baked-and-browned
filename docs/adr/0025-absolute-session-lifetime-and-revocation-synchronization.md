@@ -49,9 +49,17 @@
 - **Cookie lifetime.** The refresh cookie's `Max-Age` follows the new token's `expires_at` instead of a fixed 14 days.
 - **At the absolute end** the refresh is refused with the normal 401. The user signs in again, which starts a new family.
 - **Migration (new; V13, the number is free now that QA-01's V13 is not merged):** add `family_expires_at TIMESTAMPTZ` and backfill existing rows.
-  - The backfill sets it to the earliest `created_at` in the family plus the role's absolute lifetime, capped at the current `expires_at`.
+  - The backfill sets it to the earliest `created_at` in the family plus the role's absolute lifetime. Each token's `expires_at` is then lowered to `family_expires_at` where it was later. (Revision of 2026-11-20: the first draft capped the end at the current `expires_at`, which would have broken the CHECK and kept old admin sessions alive.)
+  - The backfill hard-codes the default absolute lifetimes (30 d, 12 h). Later configuration changes apply to new sessions only.
   - The column then becomes `NOT NULL`, with `CHECK (expires_at <= family_expires_at)`.
   - Existing admin sessions older than 12 h end at their next refresh. That is intended.
+
+- **Implementation (branch `bugfix/absolute-session-lifetime`, 2026-11-20).**
+  - Configuration `app.security.sessions.{customer,admin}.{idle,absolute}` replaces `app.security.refresh-token-ttl`. `SecurityProperties.SessionLifetime` rejects missing, zero or negative values and idle longer than absolute, so startup fails.
+  - Login sets `family_expires_at = now + absolute(role)`. Every rotation copies it and issues `expires_at = min(now + idle(role), family_expires_at)`, using the user's **current** role for the idle part.
+  - Past the end, the token is expired, so refresh returns the normal 401 and clears the cookies.
+  - `AuthSession` carries the token's remaining lifetime, which `AuthCookies` uses as `Max-Age` for both the refresh and `XSRF-TOKEN` cookies.
+  - Migration V13 as above, with `ck_refresh_within_family`.
 
 ## Consequences
 - Logout, reuse detection and disable leave no usable token once they have committed. Concurrent revocations return 401, not 500.
@@ -61,13 +69,15 @@
 
 ## Tests
 - Done (family lock): the 3 previously failing revocation-race tests are green: logout, reuse and concurrent reuse.
-- Still to do:
-- A logout and a reuse racing a refresh over many rounds.
-- An admin-disable path, if one is added, revoking under the family lock.
-- With a controllable clock:
-  - continuous refreshing stops at `family_expires_at`;
-  - `expires_at` never exceeds it;
-  - admin idle 8 h and absolute 12 h, customer 14 d and 30 d;
-  - the cookie `Max-Age` matches.
-- Backfill: migration tests for existing families, and admin families older than 12 h.
-- Cross-session isolation: revoking or expiring one family leaves the user's other families unaffected.
+- Done (absolute lifetime):
+  - `RevocationRaceIntegrationTests`: logout and reuse detection started together with a refresh, over 20 rounds.
+  - `SessionLifetimeIntegrationTests` (controllable clock):
+    - continuous refreshing stops at `family_expires_at`, and `expires_at` never exceeds it;
+    - customer 14 d idle and 30 d absolute; admin 8 h idle and 12 h absolute;
+    - the cookie `Max-Age` matches;
+    - the current role sets the idle part;
+    - expiring one family leaves the user's other families unaffected.
+  - `AbsoluteSessionLifetimeMigrationTests`: the V13 backfill on existing customer and admin families, including an admin family older than 12 h.
+  - `SessionLifetimeTest`: configuration validation and startup failure.
+  - `IdentityAndAuditSchemaTests`: the `NOT NULL` and `CHECK` constraints.
+- Still to do: an admin-disable path, if one is added, revoking under the family lock.
