@@ -53,9 +53,19 @@ describe('AdminRefundsPage', () => {
   const alert = () => root.querySelector('[role="alert"]')?.textContent?.trim() ?? '';
   const status = () => root.querySelector('[role="status"]')?.textContent?.trim() ?? null;
 
+  /** The page's three reads: each queue by status, and the newest refunds for the history. */
+  const queue = (status: 'REQUESTED' | 'APPROVED') =>
+    http.expectOne((r) => r.url === LIST && r.params.get('status') === status);
+
+  function answerLists(refunds: Refund[], recent: Refund[] = refunds): void {
+    queue('REQUESTED').flush(refunds.filter((r) => r.status === 'REQUESTED'));
+    queue('APPROVED').flush(refunds.filter((r) => r.status === 'APPROVED'));
+    http.expectOne(LIST).flush(recent);
+  }
+
   async function show(refunds: Refund[]): Promise<void> {
     await settle();
-    http.expectOne(LIST).flush(refunds);
+    answerLists(refunds);
     await fixture.whenStable();
   }
 
@@ -76,7 +86,7 @@ describe('AdminRefundsPage', () => {
 
   async function reloaded(refunds: Refund[] = []): Promise<void> {
     await settle();
-    http.expectOne(LIST).flush(refunds);
+    answerLists(refunds);
     await fixture.whenStable();
   }
 
@@ -172,6 +182,19 @@ describe('AdminRefundsPage', () => {
     expect(finished[0]).toContain('Sent · BKASH-RF-1');
     expect(finished[1]).toContain('Order BB-20261120-000005 · Rejected');
     expect(finished[2]).toContain('Order BB-20261120-000006 · Withdrawn');
+  });
+
+  it('shows an old open refund that newer ones pushed out of the newest list', async () => {
+    const old = refund({ id: 'r-old', createdAt: '2026-01-05T08:00:00Z' });
+    const due = refund({ id: 'r-due', status: 'APPROVED', createdAt: '2026-02-01T08:00:00Z' });
+    await settle();
+    // The newest refunds no longer include them; the status reads still do.
+    answerLists([old, due], []);
+    await fixture.whenStable();
+
+    expect(cards('to-approve').length).toBe(1);
+    expect(cards('to-pay-out').length).toBe(1);
+    expect(root.querySelector('[data-testid="history"]')).toBeNull();
   });
 
   it('approves another admin’s request with a note, after saying no money moves yet', async () => {
@@ -305,11 +328,16 @@ describe('AdminRefundsPage', () => {
 
   it('reports a failed load, and empty queues', async () => {
     await settle();
-    http
-      .expectOne(LIST)
-      .flush({ title: 'Forbidden', status: 403 }, { status: 403, statusText: 'Forbidden' });
+    // One failed read is enough to show the page as not loaded.
+    queue('APPROVED').flush([]);
+    http.expectOne(LIST).flush([]);
+    queue('REQUESTED').flush(
+      { title: 'Forbidden', status: 403 },
+      { status: 403, statusText: 'Forbidden' },
+    );
     await fixture.whenStable();
     expect(alert()).toContain('could not load the refunds');
+    expect(cards('to-approve').length).toBe(0);
 
     // Not click(): the page would not settle while the reload is still unanswered.
     button('Refresh').click();

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import type { Refund } from '../../core/api/generated/models';
 import { AuthSession } from '../../core/auth/auth-session';
 import { BdtPipe } from '../../shared/bdt.pipe';
@@ -30,17 +31,28 @@ export class AdminRefundsPage {
 
   protected readonly me = computed(() => this.session.user()?.id ?? null);
 
-  protected readonly refunds = rxResource({ stream: () => this.api.list() });
+  /**
+   * The two queues are loaded by status, so an old open refund is never pushed out of the server's
+   * 500-row list by newer ones; the history comes from the newest refunds.
+   */
+  protected readonly refunds = rxResource({
+    stream: () =>
+      forkJoin({
+        requested: this.api.list('REQUESTED'),
+        approved: this.api.list('APPROVED'),
+        recent: this.api.list(),
+      }),
+  });
 
   protected readonly toApprove = computed(() =>
-    (this.refunds.value() ?? []).filter((r) => r.status === 'REQUESTED').sort(oldestFirst),
+    [...(this.refunds.value()?.requested ?? [])].sort(oldestFirst),
   );
   protected readonly toPayOut = computed(() =>
-    (this.refunds.value() ?? []).filter((r) => r.status === 'APPROVED').sort(oldestFirst),
+    [...(this.refunds.value()?.approved ?? [])].sort(oldestFirst),
   );
   /** Newest first, as the server lists them. */
   protected readonly history = computed(() =>
-    (this.refunds.value() ?? [])
+    (this.refunds.value()?.recent ?? [])
       .filter((r) => r.status === 'COMPLETED' || r.status === 'REJECTED')
       .slice(0, HISTORY_SIZE),
   );
