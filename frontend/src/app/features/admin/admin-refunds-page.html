@@ -82,7 +82,7 @@
                 <a [routerLink]="['/admin/orders', r.orderId]" class="text-amber-800 underline">
                   Order {{ r.orderNumber ?? r.orderId }}
                 </a>
-                · {{ r.status === 'COMPLETED' ? 'Sent' : 'Rejected' }}
+                · {{ outcome(r) }}
                 @if (r.externalReference) {
                   · <span class="break-all">{{ r.externalReference }}</span>
                 }

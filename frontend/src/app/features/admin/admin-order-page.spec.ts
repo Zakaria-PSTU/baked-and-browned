@@ -263,6 +263,8 @@ describe('AdminOrderPage', () => {
         'Request a refund of ৳1,310.00? Another admin must approve it',
       );
 
+      // A double click sends one request.
+      button('Yes, request the refund').click();
       button('Yes, request the refund').click();
       const req = http.expectOne(REQUEST_URL);
       expect(req.request.method).toBe('POST');

@@ -46,6 +46,17 @@ export class AdminRefundsPage {
   );
 
   protected readonly at = formatDhakaDateTime;
+
+  /** A request rejected by the admin who made it was withdrawn, not refused. */
+  protected outcome(r: Refund): string {
+    if (r.status === 'COMPLETED') {
+      return 'Sent';
+    }
+    return r.requestedByType === 'ADMIN' && !!r.decidedBy && r.decidedBy === r.requestedBy
+      ? 'Withdrawn'
+      : 'Rejected';
+  }
+
   protected readonly lastMessage = signal<string | null>(null);
 
   protected changed(event: { message: string }): void {

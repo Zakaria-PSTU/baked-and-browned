@@ -3,6 +3,7 @@ package com.bakedandbrowned.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -204,6 +205,7 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 		decideRefund(refundId, "MAYBE", "Not sure").andExpect(status().isBadRequest());
 		decideRefund(refundId, "APPROVE", "Fine").andExpect(status().isOk());
 		complete(refundId, "ab").andExpect(status().isUnprocessableContent());
+		complete(refundId, "    ").andExpect(status().isUnprocessableContent());
 		complete(refundId, "X".repeat(151)).andExpect(status().isUnprocessableContent());
 
 		assertThat(jdbc.queryForObject("SELECT status::text FROM refunds WHERE id = ?", String.class, refundId))
@@ -409,6 +411,75 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 		assertThat(outcomes.get(1)).isEqualTo("APPROVED");
 		assertThat(jdbc.queryForObject("SELECT decided_by FROM refunds WHERE id = ?", UUID.class, refundId))
 			.isEqualTo(reviewerId);
+	}
+
+	@Test
+	void twoReviewersDecidingAtOnceRecordOneDecision() throws Exception {
+		UUID orderId = paidOrder();
+		cancel(customer, orderId, null).andExpect(status().isOk());
+		UUID refundId = onlyRefund(orderId);
+		UUID approverId = userIdOf(admin);
+		UUID rejecterId = userIdOf(reviewer);
+
+		List<String> outcomes = race(2, i -> () -> {
+			try {
+				return i == 0 ? workflow.decide(refundId, approverId, Decision.APPROVE, "Approve").status()
+						: workflow.decide(refundId, rejecterId, Decision.REJECT, "Reject").status();
+			}
+			catch (ApiException ex) {
+				return ex.code();
+			}
+		});
+
+		assertThat(outcomes).containsOnlyOnce(RefundWorkflow.REFUND_ALREADY_DECIDED);
+		String winner = outcomes.get(0).equals(RefundWorkflow.REFUND_ALREADY_DECIDED) ? outcomes.get(1)
+				: outcomes.get(0);
+		assertThat(winner).isIn("APPROVED", "REJECTED");
+		assertThat(refundStatus(refundId)).isEqualTo(winner);
+		assertThat(jdbc.queryForObject("""
+				SELECT count(*) FROM audit_events WHERE entity_type = 'refund' AND entity_id = ?
+				AND action IN ('refund.approved', 'refund.rejected')""", Integer.class, refundId)).isEqualTo(1);
+	}
+
+	@Test
+	void aRefundWithNoKnownRequesterStillNeedsAnEnabledAdminAndIsListedWithoutOne() throws Exception {
+		UUID orderId = paidOrder();
+		// No path in the service opens one; this stands for an older or system-opened request.
+		UUID refundId = jdbc.queryForObject("""
+				INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type, requested_by)
+				SELECT id, order_id, amount, 'Opened by the system', 'SYSTEM', NULL FROM payments WHERE id = ?
+				RETURNING id""", UUID.class, paymentOf(orderId));
+		String orderNumber = jdbc.queryForObject("SELECT order_number FROM orders WHERE id = ?", String.class,
+				orderId);
+
+		mockMvc.perform(get("/api/v1/admin/refunds").header(HttpHeaders.AUTHORIZATION, admin))
+			.andExpect(jsonPath("$[0].id").value(refundId.toString()))
+			.andExpect(jsonPath("$[0].requestedByType").value("SYSTEM"))
+			.andExpect(jsonPath("$[0].requestedBy").value(nullValue()))
+			.andExpect(jsonPath("$[0].orderNumber").value(orderNumber));
+
+		decideRefund(customer, refundId, "APPROVE", "I approve").andExpect(status().isForbidden());
+		jdbc.update("UPDATE users SET enabled = FALSE WHERE id = ?", userIdOf(reviewer));
+		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isForbidden());
+		assertThat(refundStatus(refundId)).isEqualTo("REQUESTED");
+
+		decideRefund(admin, refundId, "APPROVE", "Checked").andExpect(status().isOk());
+		complete(refundId, "BANK-SYS-1").andExpect(status().isOk());
+		assertThat(paymentStatus(orderId)).isEqualTo("REFUNDED");
+	}
+
+	@Test
+	void theServerSetsTheCurrencyAndKeepsTheAmountItWasGiven() throws Exception {
+		UUID orderId = paidOrder();
+
+		perform(admin, "/api/v1/admin/payments/{id}/refunds", paymentOf(orderId),
+				"{\"reason\":\"Goodwill\",\"amount\":100.00,\"currency\":\"USD\"}")
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.currency").value("BDT"))
+			.andExpect(jsonPath("$.amount").value(100.0));
+		assertThat(jdbc.queryForMap("SELECT amount, currency FROM refunds WHERE order_id = ?", orderId))
+			.containsEntry("amount", new BigDecimal("100.00"))
+			.containsEntry("currency", "BDT");
 	}
 
 	// ------------------------------------------------------------------ partial refunds and the total cap

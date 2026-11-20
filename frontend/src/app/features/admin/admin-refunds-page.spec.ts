@@ -127,7 +127,21 @@ describe('AdminRefundsPage', () => {
         requestedByType: 'CUSTOMER',
         requestedBy: 'customer-1',
       }),
-      refund({ id: 'r5', status: 'REJECTED', decisionNote: 'Delivered fine' }),
+      refund({
+        id: 'r5',
+        status: 'REJECTED',
+        orderNumber: 'BB-20261120-000005',
+        decidedBy: ME,
+        decisionNote: 'Delivered fine',
+      }),
+      refund({
+        id: 'r6',
+        status: 'REJECTED',
+        orderNumber: 'BB-20261120-000006',
+        requestedBy: 'admin-other',
+        decidedBy: 'admin-other',
+        decisionNote: 'Asked by mistake',
+      }),
     ]);
 
     const toApprove = cards('to-approve');
@@ -150,10 +164,14 @@ describe('AdminRefundsPage', () => {
       'you',
     );
     expect(cards('to-pay-out').length).toBe(1);
-    const history = root.querySelector('[data-testid="history"]')?.textContent ?? '';
-    expect(history).toContain('Sent');
-    expect(history).toContain('BKASH-RF-1');
-    expect(history).toContain('Rejected');
+    // Finished ones: sent, rejected by a reviewer, and withdrawn by the admin who asked.
+    const finished = [...root.querySelectorAll('[data-testid="history"] li')].map(
+      (li) => li.textContent?.replace(/\s+/g, ' ') ?? '',
+    );
+    expect(finished.length).toBe(3);
+    expect(finished[0]).toContain('Sent · BKASH-RF-1');
+    expect(finished[1]).toContain('Order BB-20261120-000005 · Rejected');
+    expect(finished[2]).toContain('Order BB-20261120-000006 · Withdrawn');
   });
 
   it('approves another admin’s request with a note, after saying no money moves yet', async () => {
@@ -172,6 +190,8 @@ describe('AdminRefundsPage', () => {
     http.expectNone(`${LIST}/r1/decision`);
 
     await click('Approve');
+    // A double click sends one decision.
+    button('Yes, approve').click();
     button('Yes, approve').click();
     const req = http.expectOne(`${LIST}/r1/decision`);
     expect(req.request.method).toBe('POST');
@@ -231,6 +251,8 @@ describe('AdminRefundsPage', () => {
       'This does not send money',
     );
 
+    // A double click records the payout once.
+    button('Yes, the money was sent').click();
     button('Yes, the money was sent').click();
     const req = http.expectOne(`${LIST}/r1/completion`);
     expect(req.request.body).toEqual({ externalReference: 'BKASH-RF-77120' });
