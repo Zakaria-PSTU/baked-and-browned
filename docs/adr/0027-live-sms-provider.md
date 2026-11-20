@@ -126,6 +126,56 @@ Every response is classified by its `status_code`, and for a single message also
   - V14 is checked by `DatabaseMigrationTests` and the spec check.
 - **One real message** to the owner's phone, through the production configuration, only with explicit approval and owner-supplied credentials.
 
+## Implementation (branch `feature/sms-ssl-wireless`, 2026-11-20)
+
+### Code
+- **Package `notification.sms.sslwireless`:**
+  - `SslWirelessProperties` checks the settings; its `toString` masks the token;
+  - `SslWirelessConfiguration` registers the sender only when enabled;
+  - `SslWirelessSmsSender` sends with `RestClient`, with redirects off and both timeouts.
+- **`SmsSender.SmsRejectedException`** extends `SmsDeliveryException` and carries the provider's code, so callers that only retry still compile and behave as before.
+- **`OrderNotificationDelivery`:**
+  - skips SENT, FAILED and EXPIRED notices;
+  - expires a notice whose outbox event is older than `MAX_AGE` (24 hours) before attempting it;
+  - records FAILED on `SmsRejectedException`.
+
+  Both endings also record the provider name and complete the outbox event.
+- **Migration V14** (`docs/database.md`):
+  - the two statuses and `ck_notification_failure`;
+  - "only PENDING notices may change", as trigger `trg_notification_final`, which raises `ck_notification_final`.
+- **`application.yaml`:** `app.notifications.sms.ssl-wireless.*`, off by default.
+
+### Details settled during implementation
+1. **Per-recipient refusals:** a request accepted with `sms_status` `INVALID` or `BLOCKED` for the recipient is a permanent rejection, with that status as the code. Any other unexpected per-recipient status is retried.
+2. **Invalid numbers caught locally:** a number that is not `+8801XXXXXXXXX` is rejected without calling the provider (code `INVALID_NUMBER`). Account phones are already validated to that form.
+3. **Errors read from the body:** the JSON body is read whatever the HTTP status, because the documentation does not say which HTTP status accompanies an error. A body that isn't JSON is retried.
+4. **The fake steps aside:** `FakeSmsSender` is not created when the adapter is enabled. So exactly one sender exists, and a developer can send a real message under `dev`.
+5. **Duplicates:** a duplicate is logged at INFO with the `csms_id` and recorded as SENT, with the `csms_id` as the message id.
+
+### Tests
+- **`SslWirelessStub`:** a local stub. It remembers accepted references and reports a reused one as a duplicate, as documented.
+- **`SslWirelessSmsSenderTest`:**
+  - the exact request;
+  - the reference format;
+  - every documented code by class (permanent, configuration, temporary, unknown);
+  - refused recipients;
+  - non-OK HTTP statuses, an empty body and a non-JSON body;
+  - a timeout followed by a duplicate;
+  - a connection failure;
+  - captured logs and exception messages free of message text, numbers and the token.
+- **`SslWirelessWiringTest`:** off by default; enabled in `prod` and in `dev` (replacing the fake); a missing token, plain http and a too-long sender ID each fail startup.
+- **`SmsSenderContract`:** shared by the fake and the adapter.
+- **`OrderNotificationIntegrationTests`:**
+  - a permanent rejection ends the notice and the event, and isn't resent on redelivery;
+  - a notice still unsent after 24 hours expires;
+  - a stalled outbox doesn't reset the clock;
+  - a notice just under 24 hours old is still sent.
+- **`NotificationSchemaTests`:** the V14 checks and the trigger.
+
+### Still open
+- The questions to SSL Wireless in the prerequisites above.
+- One real message through an actual account, which needs the account, the token and the whitelisted IP address.
+
 ## Consequences
 - The production web app can start once the account, the fixed IP address and the token exist. Until then it still refuses to start, which is deliberate.
 - Undeliverable and stale notices end visibly (FAILED or EXPIRED, with a code) instead of retrying forever. Alerts on FAILED and EXPIRED counts, and on configuration errors logged at ERROR, belong with the monitoring in `architecture.md`.

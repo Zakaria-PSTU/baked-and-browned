@@ -164,6 +164,72 @@ class OrderNotificationIntegrationTests extends CheckoutIntegrationTest {
 	}
 
 	@Test
+	void aPermanentRejectionEndsTheNoticeWithoutRetrying() throws Exception {
+		UUID orderId = placeOrder(bearer("CUSTOMER"), "COD", slot, line(fudge, 1, six));
+		sms.rejectNext(1);
+
+		// The event completes: nothing is left to retry.
+		assertThat(dispatcher.dispatchDue()).isEqualTo(1);
+		assertThat(dispatcher.pendingCount()).isZero();
+		assertThat(sms.sent()).isEmpty();
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "FAILED")
+			.containsEntry("failure_code", FakeSmsSender.REJECTED_CODE)
+			.containsEntry("provider", FakeSmsSender.PROVIDER)
+			.containsEntry("attempts", 1)
+			.containsEntry("ended", true);
+		assertThat(orderStatus(orderId)).isEqualTo("CONFIRMED");
+
+		// A redelivered event leaves it alone.
+		handler(OrderEvents.PLACED).handle(event(orderId, OrderEvents.PLACED));
+		assertThat(sms.sent()).isEmpty();
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "FAILED").containsEntry("attempts", 1);
+	}
+
+	@Test
+	void aNoticeStillUnsentADayAfterItsEventExpires() throws Exception {
+		UUID orderId = placeOrder(bearer("CUSTOMER"), "COD", slot, line(fudge, 1, six));
+		sms.failNext(1);
+		assertThat(dispatcher.dispatchDue()).isZero();
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "PENDING");
+
+		// The provider kept failing; the next retry comes 24 hours after the event.
+		jdbc.update("UPDATE outbox_events SET created_at = now() - interval '24 hours 1 minute',"
+				+ " next_attempt_at = now() - interval '1 second' WHERE aggregate_id = ?", orderId);
+		assertThat(dispatcher.dispatchDue()).isEqualTo(1);
+
+		assertThat(sms.sent()).isEmpty();
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "EXPIRED")
+			.containsEntry("failure_code", "EXPIRED")
+			.containsEntry("attempts", 1)
+			.containsEntry("ended", true);
+		assertThat(dispatcher.pendingCount()).isZero();
+	}
+
+	@Test
+	void aStalledOutboxDoesNotResetTheClock() throws Exception {
+		UUID orderId = placeOrder(bearer("CUSTOMER"), "COD", slot, line(fudge, 1, six));
+		// Never attempted until a day later (for example the dispatcher was down).
+		jdbc.update("UPDATE outbox_events SET created_at = now() - interval '25 hours' WHERE aggregate_id = ?", orderId);
+
+		assertThat(dispatcher.dispatchDue()).isEqualTo(1);
+
+		assertThat(sms.sent()).isEmpty();
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "EXPIRED").containsEntry("attempts", 0);
+	}
+
+	@Test
+	void aNoticeJustUnderADayOldIsStillSent() throws Exception {
+		UUID orderId = placeOrder(bearer("CUSTOMER"), "COD", slot, line(fudge, 1, six));
+		jdbc.update("UPDATE outbox_events SET created_at = now() - interval '23 hours 59 minutes' WHERE aggregate_id = ?",
+				orderId);
+
+		assertThat(dispatcher.dispatchDue()).isEqualTo(1);
+
+		assertThat(sms.sent()).hasSize(1);
+		assertThat(outcome(orderId, "ORDER_RECEIVED")).containsEntry("status", "SENT").containsEntry("ended", false);
+	}
+
+	@Test
 	void everyOrderEventHasExactlyOneHandler() {
 		assertThat(handlers).extracting(OutboxHandler::eventType)
 			.contains(OrderEvents.PLACED, OrderEvents.CONFIRMED, OrderEvents.CANCELLED, OrderEvents.EXPIRED)
@@ -203,6 +269,12 @@ class OrderNotificationIntegrationTests extends CheckoutIntegrationTest {
 	private Map<String, Object> notice(UUID orderId, String kind) {
 		return jdbc.queryForMap("""
 				SELECT id, status::text AS status, channel::text AS channel, provider, attempts, recipient, body, user_id
+				FROM notifications WHERE order_id = ? AND kind = ?""", orderId, kind);
+	}
+
+	private Map<String, Object> outcome(UUID orderId, String kind) {
+		return jdbc.queryForMap("""
+				SELECT status::text AS status, failure_code, provider, attempts, failed_at IS NOT NULL AS ended
 				FROM notifications WHERE order_id = ? AND kind = ?""", orderId, kind);
 	}
 

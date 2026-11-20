@@ -155,6 +155,26 @@ Notes:
   deletion of refresh-token families that expired more than 7 days ago. The hold-expiry job comes
   with orders in Phase 2.
 
+### SMS notices (ADR-0016, ADR-0027)
+
+Customer notices go by SMS through `notification.sms.SmsSender`. Under `dev` and `test` a
+`FakeSmsSender` keeps them in memory. Production uses SSL Wireless ISMS Plus; without it, the `prod`
+profile has no `SmsSender` and the web app refuses to start.
+
+```sh
+APP_NOTIFICATIONS_SMS_SSL_WIRELESS_ENABLED=true
+APP_NOTIFICATIONS_SMS_SSL_WIRELESS_API_TOKEN=...      # from the secret store, never in a file
+APP_NOTIFICATIONS_SMS_SSL_WIRELESS_SENDER_ID=...      # the sid assigned to the account
+# Defaults: base-url https://smsplus.sslwireless.com/api/v3, connect-timeout 5s, read-timeout 15s
+```
+
+- The server's outgoing IP address must be whitelisted in the ISMS Plus portal (error 4003 otherwise).
+- A notice ends as SENT (accepted by the provider), FAILED (rejected permanently, for example an
+  invalid number; `failure_code` holds the provider's code) or EXPIRED (not sent within 24 hours of
+  its event). Configuration errors (token, sender ID, IP whitelist) are logged at ERROR and retried,
+  so no notice is lost while they are fixed.
+- Enabling it under `dev` replaces the fake, for a real test message.
+
 ## Frontend shell and auth (Phase 1F)
 
 ```sh

@@ -17,7 +17,8 @@ public interface SmsSender {
 	/**
 	 * Sends one message.
 	 * @return the provider's message id
-	 * @throws SmsDeliveryException if the provider did not accept the message (the caller retries)
+	 * @throws SmsRejectedException if the provider will never accept it (the caller gives up)
+	 * @throws SmsDeliveryException if the provider did not accept it this time (the caller retries)
 	 */
 	String send(SmsMessage message) throws SmsDeliveryException;
 
@@ -52,6 +53,28 @@ public interface SmsSender {
 
 		public SmsDeliveryException(String message, Throwable cause) {
 			super(message, cause);
+		}
+
+	}
+
+	/**
+	 * The provider will never accept this message (for example an invalid or blocked number): it is
+	 * not retried (ADR-0027). Never thrown for a wrong configuration, which fixing must not lose.
+	 */
+	class SmsRejectedException extends SmsDeliveryException {
+
+		private static final long serialVersionUID = 1L;
+
+		private final String code;
+
+		/** @param code the provider's status code, recorded with the notice; no text or number */
+		public SmsRejectedException(String code, String message) {
+			super(message);
+			this.code = code;
+		}
+
+		public String code() {
+			return code;
 		}
 
 	}

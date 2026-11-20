@@ -4,7 +4,10 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-/** Customer notices (V6): one per outbox event and channel, and SENT means it was handed over. */
+/**
+ * Customer notices (V6, V14): one per outbox event and channel; SENT means it was handed over;
+ * FAILED and EXPIRED record when and why; an ended notice never changes again.
+ */
 class NotificationSchemaTests extends AbstractSchemaTest {
 
 	private static final String INSERT = """
@@ -31,6 +34,37 @@ class NotificationSchemaTests extends AbstractSchemaTest {
 
 		assertRejectedBy("notifications_check", () -> jdbc.update("UPDATE notifications SET status = 'SENT'"));
 		jdbc.update("UPDATE notifications SET status = 'SENT', sent_at = now(), provider = 'fake'");
+	}
+
+	@Test
+	void anUnsentNoticeEndsWithWhenAndWhy() {
+		UUID customer = user();
+		UUID orderId = order(customer, "COD", "CONFIRMED");
+		jdbc.update(INSERT, UUID.randomUUID(), orderId, customer);
+
+		assertRejectedBy("ck_notification_failure",
+				() -> jdbc.update("UPDATE notifications SET status = 'FAILED', failed_at = now()"));
+		assertRejectedBy("ck_notification_failure",
+				() -> jdbc.update("UPDATE notifications SET failed_at = now(), failure_code = '4025'"));
+		jdbc.update("UPDATE notifications SET status = 'FAILED', failed_at = now(), failure_code = '4025'");
+	}
+
+	@Test
+	void anEndedNoticeNeverChangesAgain() {
+		UUID customer = user();
+		UUID orderId = order(customer, "COD", "CONFIRMED");
+		jdbc.update(INSERT, UUID.randomUUID(), orderId, customer);
+		jdbc.update("UPDATE notifications SET status = 'EXPIRED', failed_at = now(), failure_code = 'EXPIRED'");
+
+		assertRejectedBy("ck_notification_final", () -> jdbc.update("""
+				UPDATE notifications SET status = 'SENT', sent_at = now(), provider = 'fake', failed_at = NULL,
+				failure_code = NULL"""));
+		assertRejectedBy("ck_notification_final", () -> jdbc.update("UPDATE notifications SET attempts = attempts + 1"));
+
+		jdbc.update(INSERT.replace("'ORDER_RECEIVED'", "'ORDER_CONFIRMED'"), UUID.randomUUID(), orderId, customer);
+		jdbc.update("UPDATE notifications SET status = 'SENT', sent_at = now(), provider = 'fake' WHERE kind = 'ORDER_CONFIRMED'");
+		assertRejectedBy("ck_notification_final",
+				() -> jdbc.update("UPDATE notifications SET body = 'changed' WHERE kind = 'ORDER_CONFIRMED'"));
 	}
 
 	@Test

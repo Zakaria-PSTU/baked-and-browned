@@ -2,6 +2,7 @@ package com.bakedandbrowned.notification.service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import com.bakedandbrowned.notification.service.OrderNotices.OrderFacts;
 import com.bakedandbrowned.notification.sms.SmsSender;
 import com.bakedandbrowned.notification.sms.SmsSender.SmsDeliveryException;
 import com.bakedandbrowned.notification.sms.SmsSender.SmsMessage;
+import com.bakedandbrowned.notification.sms.SmsSender.SmsRejectedException;
 
 /**
  * Sends the SMS notice for one order event to the account holder's phone (not the delivery
@@ -26,6 +28,10 @@ import com.bakedandbrowned.notification.sms.SmsSender.SmsMessage;
  * Idempotent per outbox event: the first attempt records the notice (recipient and text fixed from
  * then on) under {@code UNIQUE (outbox_event_id, channel)}; a notice already SENT is never sent
  * again. Each statement autocommits and no lock is held while the provider is called.
+ * <p>
+ * A notice can also end unsent (ADR-0027), which completes its outbox event: FAILED when the
+ * provider rejects it permanently, EXPIRED when it was not sent within {@link #MAX_AGE} of its
+ * event. Every other provider failure is retried by the outbox, with the same text and key.
  */
 // Not in the provision-admin command (ADR-0024): it sends no notices, so it needs no SmsSender.
 @Profile("!provision-admin")
@@ -33,6 +39,12 @@ import com.bakedandbrowned.notification.sms.SmsSender.SmsMessage;
 public class OrderNotificationDelivery {
 
 	private static final Logger log = LoggerFactory.getLogger(OrderNotificationDelivery.class);
+
+	/** A notice not sent within this time of its outbox event is no longer sent (ADR-0027). */
+	public static final Duration MAX_AGE = Duration.ofHours(24);
+
+	/** Fits {@code notifications.failure_code}. */
+	static final int MAX_CODE_LENGTH = 40;
 
 	private final JdbcTemplate jdbc;
 
@@ -52,17 +64,48 @@ public class OrderNotificationDelivery {
 			record(event, kind);
 			return existing(event).orElseThrow();
 		});
-		if ("SENT".equals(notice.get("status"))) {
-			log.debug("Notice for {} already sent", event);
+		String status = (String) notice.get("status");
+		if (!"PENDING".equals(status)) {
+			// SENT, FAILED or EXPIRED: final, never sent (again).
+			log.debug("Notice for {} already {}", event, status);
 			return;
 		}
 		UUID noticeId = (UUID) notice.get("id");
+		if (tooOld(event)) {
+			end(noticeId, "EXPIRED", "EXPIRED");
+			log.warn("Notice {} for {} expired unsent after {}", noticeId, event, MAX_AGE);
+			return;
+		}
 		jdbc.update("UPDATE notifications SET attempts = attempts + 1 WHERE id = ?", noticeId);
-		String providerMessageId = sms
-			.send(new SmsMessage(noticeId, (String) notice.get("recipient"), (String) notice.get("body")));
+		String providerMessageId;
+		try {
+			providerMessageId = sms
+				.send(new SmsMessage(noticeId, (String) notice.get("recipient"), (String) notice.get("body")));
+		}
+		catch (SmsRejectedException ex) {
+			end(noticeId, "FAILED", ex.code());
+			log.warn("Notice {} for {} rejected by {} with code {}; not retried", noticeId, event, sms.provider(),
+					ex.code());
+			return;
+		}
 		jdbc.update("""
 				UPDATE notifications SET status = 'SENT', provider = ?, provider_message_id = ?, sent_at = now()
 				WHERE id = ? AND status = 'PENDING'""", sms.provider(), providerMessageId, noticeId);
+	}
+
+	/** Older than {@link #MAX_AGE}, counted from the outbox event, so a stalled outbox does not reset it. */
+	private boolean tooOld(OutboxMessage event) {
+		Boolean old = jdbc.query(
+				"SELECT created_at < now() - make_interval(secs => ?) FROM outbox_events WHERE id = ?",
+				rs -> rs.next() ? rs.getBoolean(1) : Boolean.FALSE, MAX_AGE.toSeconds(), event.id());
+		return Boolean.TRUE.equals(old);
+	}
+
+	private void end(UUID noticeId, String status, String code) {
+		String shortCode = code.length() <= MAX_CODE_LENGTH ? code : code.substring(0, MAX_CODE_LENGTH);
+		jdbc.update("""
+				UPDATE notifications SET status = ?::notification_status, failed_at = now(), failure_code = ?, provider = ?
+				WHERE id = ? AND status = 'PENDING'""", status, shortCode, sms.provider(), noticeId);
 	}
 
 	private java.util.Optional<Map<String, Object>> existing(OutboxMessage event) {
