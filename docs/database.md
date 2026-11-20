@@ -753,6 +753,18 @@ CREATE TRIGGER trg_notification_final BEFORE UPDATE ON notifications
 ```
 `failure_code` holds a provider status code or `EXPIRED`, never message text or a phone number.
 
+## V15 — refund requester (`V15__refund_requester.sql`)
+ADR-0017: the second-approver rule compares the approver with the requester, so a refund requested by a person must name them.
+```sql
+-- A refund requested by an ADMIN or a CUSTOMER names the user who asked. Without it,
+-- ck_refund_second_approver could not tell whether the approver is the requester. SYSTEM and
+-- GATEWAY requests have no user. Added without NOT VALID: an existing row breaking the rule fails
+-- the migration so that it is fixed by hand rather than hidden.
+ALTER TABLE refunds
+ ADD CONSTRAINT ck_refund_requester_known
+   CHECK (requested_by_type NOT IN ('ADMIN','CUSTOMER') OR requested_by IS NOT NULL);
+```
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.

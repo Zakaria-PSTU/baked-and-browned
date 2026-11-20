@@ -8,7 +8,7 @@ import {
   adminListRefunds,
   adminRequestRefund,
 } from '../../core/api/generated/functions';
-import type { Refund } from '../../core/api/generated/models';
+import type { Refund, RefundStatus } from '../../core/api/generated/models';
 
 /** ADMIN refunds (contract tag Admin; ADR-0011, ADR-0017), returning response bodies. */
 @Injectable({ providedIn: 'root' })
@@ -16,9 +16,11 @@ export class AdminRefundsApi {
   private readonly http = inject(HttpClient);
   private readonly rootUrl = inject(ApiConfiguration).rootUrl;
 
-  /** Every refund, newest first by the server (at most 500). */
-  list(): Observable<Refund[]> {
-    return adminListRefunds(this.http, this.rootUrl).pipe(map((r) => r.body));
+  /** Refunds newest first by the server (at most 500), optionally only one status. */
+  list(status?: RefundStatus): Observable<Refund[]> {
+    return adminListRefunds(this.http, this.rootUrl, status ? { status } : undefined).pipe(
+      map((r) => r.body),
+    );
   }
 
   /** Opens a request for another ADMIN to approve; without `amount`, everything not yet refunded. */

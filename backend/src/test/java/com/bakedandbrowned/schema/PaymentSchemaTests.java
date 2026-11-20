@@ -149,6 +149,28 @@ class PaymentSchemaTests extends AbstractSchemaTest {
 	}
 
 	@Test
+	void aRefundRequestedByAPersonNamesThem() {
+		// V15: without the requester, the second-approver check above could not apply.
+		UUID orderId = order(user(), "ONLINE", "CANCELLED");
+		UUID paymentId = payment(orderId, "ONLINE", "SUCCEEDED");
+		String request = """
+				INSERT INTO refunds (payment_id, order_id, amount, request_reason, requested_by_type, requested_by)
+				VALUES (?, ?, 100.00, 'Goodwill', ?::actor_type, ?)""";
+
+		assertRejectedBy("ck_refund_requester_known", () -> jdbc.update(request, paymentId, orderId, "ADMIN", null));
+		assertRejectedBy("ck_refund_requester_known",
+				() -> jdbc.update(request, paymentId, orderId, "CUSTOMER", null));
+		// Nor can an update remove it later.
+		jdbc.update(request, paymentId, orderId, "ADMIN", admin());
+		assertRejectedBy("ck_refund_requester_known",
+				() -> jdbc.update("UPDATE refunds SET requested_by = NULL WHERE payment_id = ?", paymentId));
+		// A request opened by the system names no one.
+		jdbc.update("UPDATE refunds SET status = 'REJECTED', decided_by = ?, decided_at = now(), decision_note = 'No' "
+				+ "WHERE payment_id = ?", admin(), paymentId);
+		jdbc.update(request, paymentId, orderId, "SYSTEM", null);
+	}
+
+	@Test
 	void reconciliationCaseResolutionIsRecordedAndOpenCasesAreUnique() {
 		UUID adminId = admin();
 		UUID orderId = order(user(), "ONLINE", "EXPIRED");
