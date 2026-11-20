@@ -58,7 +58,12 @@ describe('RefreshRecovery', () => {
     const nextPage = TestBed.inject(RefreshRecovery).awaitInterruptedRefresh(readXsrf);
     expect(await settlesWithin(nextPage, 500)).toBe(false);
     xsrf = 'csrf-2';
-    expect(await settlesWithin(Promise.all([waiting, nextPage]).then(() => undefined), 100)).toBe(true);
+    expect(
+      await settlesWithin(
+        Promise.all([waiting, nextPage]).then(() => undefined),
+        100,
+      ),
+    ).toBe(true);
   });
 
   it('gives up when the budget runs out', async () => {
@@ -89,7 +94,9 @@ describe('RefreshRecovery', () => {
 
   it('waits at most one budget for a marker from the future', async () => {
     recovery.markInFlight('csrf-1', Date.now() + 3_600_000);
-    expect(await settlesWithin(recovery.awaitInterruptedRefresh(readXsrf), RECOVERY_BUDGET_MS)).toBe(true);
+    expect(
+      await settlesWithin(recovery.awaitInterruptedRefresh(readXsrf), RECOVERY_BUDGET_MS),
+    ).toBe(true);
   });
 
   it('discards a malformed marker', async () => {

@@ -45,7 +45,12 @@ export function keepaliveRefreshTransport(
     }
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new HttpErrorResponse({ status: response.status, statusText: response.statusText, url, error: body });
+      throw new HttpErrorResponse({
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        error: body,
+      });
     }
     return body as AuthResponse;
   };

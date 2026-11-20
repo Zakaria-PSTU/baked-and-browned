@@ -9,7 +9,10 @@ const body = {
 };
 
 const json = (status: number, payload: unknown) =>
-  new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
 describe('keepaliveRefreshTransport', () => {
   it('sends a same-origin keepalive POST with the CSRF header', async () => {
@@ -29,7 +32,10 @@ describe('keepaliveRefreshTransport', () => {
     const problem = { title: 'Unauthorized', status: 401, code: 'INVALID_REFRESH_TOKEN' };
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(json(401, problem));
 
-    const error: unknown = await keepaliveRefreshTransport('/api/v1', fetchFn)('csrf-1').catch((e: unknown) => e);
+    const error: unknown = await keepaliveRefreshTransport(
+      '/api/v1',
+      fetchFn,
+    )('csrf-1').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(HttpErrorResponse);
     expect((error as HttpErrorResponse).status).toBe(401);
@@ -39,7 +45,10 @@ describe('keepaliveRefreshTransport', () => {
   it('turns a network failure into status 0', async () => {
     const fetchFn = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'));
 
-    const error: unknown = await keepaliveRefreshTransport('/api/v1', fetchFn)('csrf-1').catch((e: unknown) => e);
+    const error: unknown = await keepaliveRefreshTransport(
+      '/api/v1',
+      fetchFn,
+    )('csrf-1').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(HttpErrorResponse);
     expect((error as HttpErrorResponse).status).toBe(0);

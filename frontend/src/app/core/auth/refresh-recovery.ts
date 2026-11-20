@@ -55,7 +55,9 @@ export class RefreshRecovery {
     // A marker from the future (clock change) still waits at most one budget.
     const deadline = Math.min(marker.ts, now) + RECOVERY_BUDGET_MS;
     while (Date.now() < deadline && readXsrf() === marker.xsrf) {
-      await new Promise((resolve) => setTimeout(resolve, Math.min(RECOVERY_POLL_MS, deadline - Date.now())));
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(RECOVERY_POLL_MS, deadline - Date.now())),
+      );
     }
     this.write(null);
   }
@@ -72,7 +74,8 @@ export class RefreshRecovery {
         parsed !== null &&
         typeof (parsed as InFlightMarker).ts === 'number' &&
         Number.isFinite((parsed as InFlightMarker).ts) &&
-        (typeof (parsed as InFlightMarker).xsrf === 'string' || (parsed as InFlightMarker).xsrf === null)
+        (typeof (parsed as InFlightMarker).xsrf === 'string' ||
+          (parsed as InFlightMarker).xsrf === null)
       ) {
         return parsed as InFlightMarker;
       }

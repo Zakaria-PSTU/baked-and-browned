@@ -132,7 +132,9 @@ describe('AuthService', () => {
     const result = firstValueFrom(auth.refresh());
     await tick();
     const req = http.expectOne('/api/v1/auth/refresh');
-    expect(JSON.parse(localStorage.getItem(IN_FLIGHT_KEY) ?? 'null')).toMatchObject({ xsrf: 'csrf-1' });
+    expect(JSON.parse(localStorage.getItem(IN_FLIGHT_KEY) ?? 'null')).toMatchObject({
+      xsrf: 'csrf-1',
+    });
     req.flush(authResponse('t2'));
     await result;
     expect(localStorage.getItem(IN_FLIGHT_KEY)).toBeNull();
