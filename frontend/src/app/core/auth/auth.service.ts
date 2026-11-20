@@ -13,10 +13,12 @@ import {
   throwError,
 } from 'rxjs';
 import { ApiConfiguration } from '../api/generated/api-configuration';
-import { getCurrentUser, login, logout, refresh, register } from '../api/generated/functions';
+import { getCurrentUser, login, logout, register } from '../api/generated/functions';
 import type { AuthResponse, RegisterRequest } from '../api/generated/models';
 import { AuthSession, SessionUser } from './auth-session';
 import { withCrossTabLock } from './cross-tab-lock';
+import { RefreshRecovery } from './refresh-recovery';
+import { REFRESH_TRANSPORT } from './refresh-transport';
 
 /** Web Lock name serializing refreshes across tabs (see {@link withCrossTabLock}). */
 export const REFRESH_LOCK = 'bb-auth-refresh';
@@ -27,6 +29,10 @@ export const REFRESH_LOCK = 'bb-auth-refresh';
  * Refresh tokens rotate on every use and a reused one ends the session server-side, so
  * {@link refresh} is single-flight within the tab (concurrent callers share one request) and
  * serialized across tabs with a Web Lock.
+ *
+ * QA-01 (ADR-0023 rev 4): the refresh is sent with `keepalive` ({@link REFRESH_TRANSPORT}), so a
+ * navigation, reload or tab close no longer drops the rotated cookie, and the next page waits
+ * briefly for that cookie ({@link RefreshRecovery}) before it refreshes.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -34,6 +40,8 @@ export class AuthService {
   private readonly rootUrl = inject(ApiConfiguration).rootUrl;
   private readonly session = inject(AuthSession);
   private readonly xsrf = inject(HttpXsrfTokenExtractor);
+  private readonly transport = inject(REFRESH_TRANSPORT);
+  private readonly recovery = inject(RefreshRecovery);
 
   private inFlightRefresh: Observable<string> | null = null;
 
@@ -56,14 +64,29 @@ export class AuthService {
    */
   refresh(): Observable<string> {
     this.inFlightRefresh ??= defer(() =>
-      withCrossTabLock(REFRESH_LOCK, () =>
+      withCrossTabLock(REFRESH_LOCK, async () => {
+        // A refresh interrupted by an earlier page may still be storing its rotated cookies.
+        await this.recovery.awaitInterruptedRefresh(() => this.xsrf.getToken());
         // The CSRF cookie is read inside the lock: another tab may just have rotated it.
-        firstValueFrom(refresh(this.http, this.rootUrl, { 'X-CSRF-Token': this.csrfToken() })),
-      ),
+        const csrfToken = this.csrfToken();
+        this.recovery.markInFlight(this.xsrf.getToken());
+        try {
+          const response = await this.transport(csrfToken);
+          this.recovery.clearInFlight();
+          return response;
+        } catch (error: unknown) {
+          // Status 0: no response reached this page. An unload aborts the page's promise while the
+          // keepalive request still completes, so the marker stays for the next page to wait on.
+          if (!(error instanceof HttpErrorResponse && error.status === 0)) {
+            this.recovery.clearInFlight();
+          }
+          throw error;
+        }
+      }),
     ).pipe(
       map((response) => {
-        this.start(response.body);
-        return response.body.accessToken;
+        this.start(response);
+        return response.accessToken;
       }),
       catchError((error: unknown) => {
         if (error instanceof HttpErrorResponse && (error.status === 401 || error.status === 403)) {

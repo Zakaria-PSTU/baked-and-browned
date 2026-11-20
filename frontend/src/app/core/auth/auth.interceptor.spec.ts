@@ -10,6 +10,7 @@ import { Router, provideRouter } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { authInterceptor } from './auth.interceptor';
 import { AuthSession } from './auth-session';
+import { provideHttpClientRefreshTransport } from './refresh-transport.testing';
 
 const user = { id: 'u1', fullName: 'Nusrat', phone: '+8801712345678', role: 'CUSTOMER' as const };
 const authResponse = (token: string) => ({
@@ -31,11 +32,13 @@ describe('authInterceptor', () => {
   let router: Router;
 
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
+        provideHttpClientRefreshTransport(),
         { provide: HttpXsrfTokenExtractor, useValue: { getToken: () => 'csrf-1' } },
       ],
     });
