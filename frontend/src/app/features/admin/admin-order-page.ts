@@ -1,9 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { Observable, finalize } from 'rxjs';
-import type { AdminPayment } from '../../core/api/generated/models';
+import { Observable, catchError, finalize, map, of, switchMap } from 'rxjs';
+import type { AdminOrderDetail, AdminPayment } from '../../core/api/generated/models';
 import { userMessage } from '../../core/http/problem';
 import { BdtPipe } from '../../shared/bdt.pipe';
 import { formatDhakaDateTime, formatDhakaRange } from '../../shared/dhaka-time';
@@ -17,7 +25,9 @@ type Pending = 'step' | 'cancel' | 'cash';
  * One order for an ADMIN: customer, delivery, items, payments, refunds and the full history, with
  * the actions its status allows. Fulfillment steps go one at a time; cancelling needs a reason and
  * a second click; recording cash for a COD order needs a note. Every action is checked and audited
- * by the server, and the order is read again afterwards.
+ * by the server. After a successful action the order is read again before the confirmation shows,
+ * so the message never sits next to the state from before the action (QA-02). If that read fails,
+ * the page says its details may be out of date and holds the actions until it is reloaded.
  */
 @Component({
   selector: 'bb-admin-order-page',
@@ -66,6 +76,12 @@ export class AdminOrderPage {
   protected readonly busy = signal<Pending | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly done = signal<string | null>(null);
+  /**
+   * The order changed on the server but could not be read again: what is shown may be old.
+   * Starts over when the page is reused for another order.
+   */
+  protected readonly stale = linkedSignal({ source: this.orderId, computation: () => false });
+  protected readonly reloading = signal(false);
 
   protected readonly labels = ADMIN_STATUS_LABELS;
   protected readonly at = formatDhakaDateTime;
@@ -135,27 +151,58 @@ export class AdminOrderPage {
     );
   }
 
+  /** Reads the order again after a failed refresh; the actions stay held until it succeeds. */
+  protected reloadOrder(): void {
+    if (this.reloading()) {
+      return;
+    }
+    this.reloading.set(true);
+    this.fetchOrder()
+      .pipe(finalize(() => this.reloading.set(false)))
+      .subscribe((fresh) => {
+        if (fresh) {
+          this.order.set(fresh);
+          this.stale.set(false);
+        }
+      });
+  }
+
+  /** The order as the server has it now, or `null` if it could not be read. */
+  private fetchOrder(): Observable<AdminOrderDetail | null> {
+    return this.orders.get(this.orderId()).pipe(catchError(() => of(null)));
+  }
+
   private run(kind: Pending, action: Observable<unknown>, message: string): void {
-    if (this.busy()) {
+    if (this.busy() || this.stale()) {
       return;
     }
     this.busy.set(kind);
     this.error.set(null);
     this.done.set(null);
-    action.pipe(finalize(() => this.busy.set(null))).subscribe({
-      next: () => {
-        this.done.set(message);
-        this.confirmingCancel.set(false);
-        this.cancelReason.set('');
-        this.cashNote.set('');
-        this.order.reload();
-      },
-      error: (err: unknown) => {
-        this.confirmingCancel.set(false);
-        // Someone else may have moved the order: show it as it is now.
-        this.order.reload();
-        this.error.set(userMessage(err, 'That did not work. Please try again.'));
-      },
-    });
+    action
+      .pipe(
+        // Only a successful action reaches the re-read; its own errors go to `error` below.
+        switchMap(() => this.fetchOrder().pipe(map((fresh) => ({ fresh })))),
+        finalize(() => this.busy.set(null)),
+      )
+      .subscribe({
+        next: ({ fresh }) => {
+          if (fresh) {
+            this.order.set(fresh);
+          } else {
+            this.stale.set(true);
+          }
+          this.done.set(message);
+          this.confirmingCancel.set(false);
+          this.cancelReason.set('');
+          this.cashNote.set('');
+        },
+        error: (err: unknown) => {
+          this.confirmingCancel.set(false);
+          // Someone else may have moved the order: show it as it is now.
+          this.order.reload();
+          this.error.set(userMessage(err, 'That did not work. Please try again.'));
+        },
+      });
   }
 }
