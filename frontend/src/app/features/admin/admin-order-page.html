@@ -21,6 +21,26 @@
       {{ message }}
     </p>
   }
+  @if (stale()) {
+    <div
+      class="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900"
+      role="alert"
+      data-testid="stale"
+    >
+      <span>
+        We could not load the updated order, so the details below may be out of date. Actions are
+        paused until it is reloaded.
+      </span>
+      <button
+        type="button"
+        class="rounded-md border border-amber-300 px-3 py-1 font-medium hover:bg-amber-100 disabled:opacity-50"
+        [disabled]="reloading()"
+        (click)="reloadOrder()"
+      >
+        {{ reloading() ? 'Reloading…' : 'Reload' }}
+      </button>
+    </div>
+  }
   @if (error(); as message) {
     <p class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
       {{ message }}
@@ -33,7 +53,7 @@
       <button
         type="button"
         class="mt-2 rounded-md bg-amber-800 px-4 py-2 text-sm font-medium text-white hover:bg-amber-900 disabled:opacity-50"
-        [disabled]="busy() !== null"
+        [disabled]="busy() !== null || stale()"
         (click)="advance()"
       >
         {{ busy() === 'step' ? 'Saving…' : step.label }}
@@ -65,7 +85,7 @@
         <button
           type="button"
           class="mt-2 rounded-md bg-green-800 px-4 py-2 text-sm font-medium text-white hover:bg-green-900 disabled:opacity-50"
-          [disabled]="busy() !== null"
+          [disabled]="busy() !== null || stale()"
           (click)="collectCash()"
         >
           {{ busy() === 'cash' ? 'Saving…' : 'Record cash collected' }}
@@ -95,7 +115,7 @@
             <button
               type="button"
               class="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
-              [disabled]="busy() !== null"
+              [disabled]="busy() !== null || stale()"
               (click)="cancel()"
             >
               {{ busy() === 'cancel' ? 'Cancelling…' : 'Yes, cancel order ' + o.orderNumber }}
@@ -106,7 +126,7 @@
           <button
             type="button"
             class="mt-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
-            [disabled]="busy() !== null"
+            [disabled]="busy() !== null || stale()"
             (click)="cancel()"
           >
             Cancel order
