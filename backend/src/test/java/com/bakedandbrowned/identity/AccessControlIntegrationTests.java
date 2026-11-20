@@ -92,9 +92,18 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 				// Parser and validator messages are not echoed.
 				.andExpect(jsonPath("$.detail").value("The access token is invalid or has expired."));
 		}
-		// The control: a well-formed token from the application key is accepted.
+		// A well-formed token naming no account is refused the same way (ADR-0028).
+		mockMvc.perform(get("/api/v1/auth/me")
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + encode(jwtEncoder, valid(now))))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
+		// The control: a well-formed token from the application key, for an existing ADMIN, is accepted.
+		UUID adminId = jdbc.queryForObject("""
+				INSERT INTO users (full_name, phone, password_hash, role)
+				VALUES ('Token Admin', ?, 'unused', 'ADMIN') RETURNING id""", UUID.class, phone());
 		mockMvc.perform(get("/api/v1/admin/orders")
-			.header(HttpHeaders.AUTHORIZATION, "Bearer " + encode(jwtEncoder, valid(now).claim("roles", List.of("ADMIN")))))
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + encode(jwtEncoder,
+					valid(now).subject(adminId.toString()).claim("roles", List.of("ADMIN")))))
 			.andExpect(status().isOk());
 	}
 

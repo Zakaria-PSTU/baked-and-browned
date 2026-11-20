@@ -365,15 +365,19 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 		jdbc.update("UPDATE users SET role = 'CUSTOMER' WHERE id = ?", reviewerId);
 		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("FORBIDDEN"));
-		// So is a disabled one.
+		// A disabled one is refused at the door (ADR-0028), and by the service as a second layer.
 		jdbc.update("UPDATE users SET role = 'ADMIN', enabled = FALSE WHERE id = ?", reviewerId);
-		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isForbidden());
+		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isUnauthorized());
+		assertThatThrownBy(() -> workflow.decide(refundId, reviewerId, Decision.APPROVE, "Approve"))
+			.isInstanceOfSatisfying(ApiException.class, ex -> assertThat(ex.code()).isEqualTo("FORBIDDEN"));
 		assertThat(refundStatus(refundId)).isEqualTo("REQUESTED");
 
 		jdbc.update("UPDATE users SET enabled = TRUE WHERE id = ?", reviewerId);
 		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isOk());
 		jdbc.update("UPDATE users SET enabled = FALSE WHERE id = ?", userIdOf(admin));
-		complete(refundId, "BANK-9").andExpect(status().isForbidden());
+		complete(refundId, "BANK-9").andExpect(status().isUnauthorized());
+		assertThatThrownBy(() -> workflow.complete(refundId, userIdOf(admin), "BANK-9"))
+			.isInstanceOfSatisfying(ApiException.class, ex -> assertThat(ex.code()).isEqualTo("FORBIDDEN"));
 		assertThat(refundStatus(refundId)).isEqualTo("APPROVED");
 	}
 
@@ -460,7 +464,7 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 
 		decideRefund(customer, refundId, "APPROVE", "I approve").andExpect(status().isForbidden());
 		jdbc.update("UPDATE users SET enabled = FALSE WHERE id = ?", userIdOf(reviewer));
-		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isForbidden());
+		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isUnauthorized());
 		assertThat(refundStatus(refundId)).isEqualTo("REQUESTED");
 
 		decideRefund(admin, refundId, "APPROVE", "Checked").andExpect(status().isOk());

@@ -6,12 +6,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
@@ -26,6 +25,10 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * off because bearer-authenticated endpoints never read cookies; the only cookie-authenticated
  * endpoints ({@code /auth/refresh}, {@code /auth/logout}) are protected by {@link CsrfGuard}
  * (double-submit token plus {@code Origin} allow-list) instead.
+ * <p>
+ * Each request with a valid access token is checked against the account as it is now
+ * ({@link AccountStateJwtConverter}, ADR-0028): disabled or missing accounts get 401, and the role
+ * comes from the database, not the token.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -38,7 +41,8 @@ public class SecurityConfig {
 			pathPattern(HttpMethod.POST, "/api/v1/auth/refresh"), pathPattern(HttpMethod.POST, "/api/v1/auth/logout"));
 
 	@Bean
-	SecurityFilterChain apiSecurity(HttpSecurity http, SecurityProblemHandler problems) throws Exception {
+	SecurityFilterChain apiSecurity(HttpSecurity http, SecurityProblemHandler problems, JdbcTemplate jdbc)
+			throws Exception {
 		http.csrf(AbstractHttpConfigurer::disable)
 			.httpBasic(AbstractHttpConfigurer::disable)
 			.formLogin(AbstractHttpConfigurer::disable)
@@ -70,21 +74,12 @@ public class SecurityConfig {
 				.anyRequest()
 				.authenticated())
 			.oauth2ResourceServer(resource -> resource
-				.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+				.jwt(jwt -> jwt.jwtAuthenticationConverter(new AccountStateJwtConverter(jdbc)))
 				.bearerTokenResolver(bearerTokenResolver())
 				.authenticationEntryPoint(problems)
 				.accessDeniedHandler(problems))
 			.exceptionHandling(errors -> errors.authenticationEntryPoint(problems).accessDeniedHandler(problems));
 		return http.build();
-	}
-
-	private static JwtAuthenticationConverter jwtAuthenticationConverter() {
-		JwtGrantedAuthoritiesConverter roles = new JwtGrantedAuthoritiesConverter();
-		roles.setAuthoritiesClaimName(JwtConfig.ROLES_CLAIM);
-		roles.setAuthorityPrefix("ROLE_");
-		JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-		converter.setJwtGrantedAuthoritiesConverter(roles);
-		return converter;
 	}
 
 	/**
