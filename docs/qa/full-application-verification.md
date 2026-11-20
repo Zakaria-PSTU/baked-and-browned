@@ -3,6 +3,28 @@
 Local end-to-end QA of `main` at `f96ca69` (after PR #19), run on one Windows 11 machine.
 Every result below was executed in this pass; nothing is carried over from earlier runs unless it says so.
 
+> **Status update, 2026-11-20.** The report below is kept as written on 2026-11-19 and describes `main` at `f96ca69`. Since then:
+>
+> | Finding | Status now |
+> |---|---|
+> | **QA-01** forced logout after an interrupted refresh | **Fixed in the web app** by PR #23 (`6cef240`, ADR-0023 rev 4). The grace window proposed in §8 was **rejected**. The server keeps strict rotation: a spent token always revokes the session. The browser now sends the refresh with `fetch(…, {keepalive: true})` and records it as in flight, so the next page waits for the rotated cookie. Verified in Chrome, Firefox and WebKit (Playwright builds). **Still open:** real Safari (iOS/macOS) and Android are untested, and a response lost in the network still signs the user out (ADR-0026, future work). |
+> | **NEW-1** (found after this report) refresh/revocation race: a session could survive a logout or reuse detection, and concurrent reuse detections could deadlock | **Fixed** by PR #21 (`55f6c96`, ADR-0025 part 1): refresh, logout and reuse revocation serialize on a per-family advisory lock. |
+> | Absolute session lifetime (related hardening) | **Added** by PR #22 (`7a7284b`, ADR-0025 part 2): customers 14 days idle / 30 days absolute, admins 8 hours / 12 hours. |
+> | **QA-02** cash-collection banner shows before the payment line updates | Open. |
+> | **QA-03** late payment on an expired order is unexplained; no reconciliation UI (N-06) | Open. |
+> | **QA-04** no supported way to add a second admin | **Fixed** by PR #20 (`e572e5a`, ADR-0024): the one-off `provision-admin` command now also creates additional admins (`ADMIN_PROVISION_MODE=additional`), authorized by an existing enabled admin and audited. |
+>
+> ADR-0023, ADR-0024, ADR-0025 and ADR-0026 are still **Proposed**.
+>
+> **Still blocking launch:**
+> - **No production SMS provider** (only the development fake exists, so the web app can't start in production).
+> - The operations UI gaps N-01…N-06 (N-05 refunds and N-06 reconciliation in particular).
+> - The production configuration in §12.3, other than the second admin.
+> - A test against the real SSLCommerz sandbox.
+> - Confirming that production serves the web app and the API from the same origin, which the QA-01 fix assumes.
+>
+> Phone numbers of the QA test accounts are blacked out in the screenshots.
+
 **How each result was obtained** — every row in the matrices is tagged:
 
 | Tag | Meaning |
