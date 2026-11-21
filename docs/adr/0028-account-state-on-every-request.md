@@ -1,6 +1,6 @@
 # ADR-0028: Check the account's state on every authenticated request
 
-- Status: Proposed
+- Status: Accepted 2026-11-21 (with the 2026-11-21 correction below)
 - Date: 2026-11-20
 - Related: ADR-0025 (session lifetime and revocation), ADR-0017 (refund approval), architecture.md (Identity and security)
 
@@ -35,3 +35,9 @@
 - **A token deny-list.** It needs a store and its own expiry handling, so it is more moving parts than one lookup.
 - **Checking in each service, like `RefundWorkflow`.** That is easy to forget on a new endpoint. A check at the door covers every endpoint by default.
 - **A short cache (for example 30 s).** It adds a dependency and a delay before the change takes effect. It was rejected for now.
+
+## Correction (2026-11-21, on acceptance)
+- **The web app takes the role from the sign-in and refresh response, not from the token** (`auth-session.ts`). That corrects "used by the web app for display" above.
+  - After a demotion, the admin menus stay visible until the session's next refresh, at most 15 minutes.
+  - The API refuses admin actions at once.
+- Disabling is now done with the operator command (ADR-0029). That supersedes "There is no disable or demote API yet" in the Context. Demotion still has no supported path.

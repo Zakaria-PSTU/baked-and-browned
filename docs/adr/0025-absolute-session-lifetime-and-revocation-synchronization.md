@@ -1,6 +1,6 @@
 # ADR-0025: Absolute session lifetime and revocation synchronization
 
-- Status: Proposed
+- Status: Accepted 2026-11-21 (with the 2026-11-21 amendment below)
 - Date: 2026-11-20
 - Related: ADR-0023 (strict rotation), the refresh-token rotation in architecture.md
 
@@ -81,3 +81,10 @@
   - `SessionLifetimeTest`: configuration validation and startup failure.
   - `IdentityAndAuditSchemaTests`: the `NOT NULL` and `CHECK` constraints.
 - Still to do: an admin-disable path, if one is added, revoking under the family lock.
+
+## Amendment (2026-11-21, on acceptance)
+- An admin disable path now exists (ADR-0029, PR #32). It takes each of the account's family locks, then revokes all of the account's tokens.
+  - That supersedes "Disabling is lazy; there is no disable API" in the Context, and "There is no other caller of `revokeFamily` today".
+  - It completes the "Still to do" item under Tests.
+- `RevocationRaceIntegrationTests` covers a disable racing a refresh, and that test fails without the locks.
+- Both parts of this ADR are merged. The branches named in the implementation notes are merged.

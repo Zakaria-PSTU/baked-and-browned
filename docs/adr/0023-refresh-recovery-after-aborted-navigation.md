@@ -1,6 +1,6 @@
 # ADR-0023: Strict refresh rotation with browser-side recovery from aborted navigations
 
-- Status: Proposed (revision 4; supersedes revisions 1–3 on the unmerged `bugfix/qa-01` branch)
+- Status: Accepted 2026-11-21 (revision 4, with the 2026-11-21 amendment below; supersedes revisions 1–3 on the unmerged `bugfix/qa-01` branch)
 - Date: 2026-11-20
 - Related: ADR-0025 (absolute session lifetime and revocation synchronization), ADR-0026 (key-bound refresh tokens, future)
 
@@ -84,3 +84,7 @@ Revisions 1–3 accepted the spent token again for a short window: IP + User-Age
 - **D: client-generated request id required on retry.** The id travels in the same request as the token, so an interceptor has it too. It helps only against theft of the cookie store alone. Not a proof of client identity, and it needs an API change.
 - **IP binding** (revision 1): signs out mobile users and is weakened by carrier-grade NAT. Little protection against device malware.
 - **E: key-bound refresh (proof of possession).** Not rejected; deferred to ADR-0026.
+
+## Amendment (2026-11-21, on acceptance)
+- Merged in PR #23 (`6cef240`). The "Implementation" section above describes that work. The branch it names is merged.
+- Testing on real Safari (iOS, macOS) and Android Chrome, and the same-origin hosting check, remain launch conditions in `docs/launch-readiness.md`.

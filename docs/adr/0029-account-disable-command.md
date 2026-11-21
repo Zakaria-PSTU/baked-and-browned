@@ -1,6 +1,6 @@
 # ADR-0029: Disable and re-enable accounts through the operator command
 
-- Status: Proposed
+- Status: Accepted 2026-11-21
 - Date: 2026-11-20
 - Builds on: ADR-0024 (operator-run admin provisioning), ADR-0025 (refresh-family lock), ADR-0028 (account state checked on every request)
 
