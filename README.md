@@ -63,6 +63,14 @@ Upgrades are deliberate, reviewed changes.
 | PostgreSQL | 17.12 (alpine image) | `infra/docker/compose.yaml` |
 | GitHub Actions | checkout v7.0.1, setup-java v6.3.0, setup-node v7.1.0 | pinned by commit SHA in `ci.yml` |
 
+## Deploying to production
+
+Run with `SPRING_PROFILES_ACTIVE=prod`, and work through [docs/launch-readiness.md](docs/launch-readiness.md)
+first. Under `prod` the app refuses to start while a local-development default is still set: localhost
+origins or return URLs, a relative proof directory, insecure cookies, an ephemeral signing key, or an
+enabled SSLCommerz gateway still pointing at the sandbox. The
+message names every setting to fix (ADR-0030).
+
 ## Phase 1A spike findings
 
 - **Jackson 3 and money** (`MoneyJsonSerializationSpikeTest`): `BigDecimal` is written with its own
