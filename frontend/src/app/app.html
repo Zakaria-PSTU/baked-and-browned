@@ -58,7 +58,11 @@
         </p>
       </div>
     }
-    <div [inert]="adminAccessRemoved()" data-testid="page">
+    <div
+      [inert]="adminAccessRemoved()"
+      [class.admin-access-removed]="adminAccessRemoved()"
+      data-testid="page"
+    >
       <router-outlet />
     </div>
   </main>
