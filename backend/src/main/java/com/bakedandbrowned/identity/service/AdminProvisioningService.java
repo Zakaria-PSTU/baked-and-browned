@@ -1,7 +1,10 @@
 package com.bakedandbrowned.identity.service;
 
 import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -21,8 +24,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.bakedandbrowned.audit.service.AuditLog;
 import com.bakedandbrowned.common.value.InvalidValueException;
 import com.bakedandbrowned.common.value.PhoneNumber;
+import com.bakedandbrowned.identity.entity.RevokeReason;
 import com.bakedandbrowned.identity.entity.Role;
 import com.bakedandbrowned.identity.entity.UserAccount;
+import com.bakedandbrowned.identity.repository.RefreshTokenRepository;
 import com.bakedandbrowned.identity.repository.UserAccountRepository;
 
 /**
@@ -62,11 +67,33 @@ public class AdminProvisioningService {
 			PROVISIONER_NOT_ADMIN = "PROVISIONER_NOT_ADMIN", PROVISIONER_DISABLED = "PROVISIONER_DISABLED",
 			PROVISIONING_FAILED = "PROVISIONING_FAILED";
 
+	/** Audit actions of the account status modes (ADR-0029). */
+	public static final String ACCOUNT_DISABLED = "account.disabled", ACCOUNT_ENABLED = "account.enabled",
+			STATUS_CHANGE_REFUSED = "account.status_change_refused",
+			STATUS_CHANGE_FAILED = "account.status_change_failed";
+
+	/** Audit reason codes for refused status changes. */
+	public static final String INVALID_REASON = "INVALID_REASON", ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND",
+			ALREADY_DISABLED = "ALREADY_DISABLED", ALREADY_ENABLED = "ALREADY_ENABLED",
+			LAST_ENABLED_ADMIN = "LAST_ENABLED_ADMIN", STATUS_CHANGE_FAILED_CODE = "STATUS_CHANGE_FAILED";
+
 	public enum Mode {
-		FIRST, ADDITIONAL
+		FIRST, ADDITIONAL, DISABLE, ENABLE;
+
+		boolean changesStatus() {
+			return this == DISABLE || this == ENABLE;
+		}
+	}
+
+	/** The outcome of a disable or enable: the account and how many of its sessions were revoked. */
+	public record StatusChange(UUID accountId, int sessionsRevoked) {
 	}
 
 	private final UserAccountRepository users;
+
+	private final RefreshTokenRepository refreshTokens;
+
+	private final Clock clock;
 
 	private final PasswordEncoder passwordEncoder;
 
@@ -81,9 +108,12 @@ public class AdminProvisioningService {
 	/** Verified against when the named provisioner does not exist, so timing does not reveal it. */
 	private volatile @Nullable String timingDummyHash;
 
-	public AdminProvisioningService(UserAccountRepository users, PasswordEncoder passwordEncoder, JdbcTemplate jdbc,
-			AuditLog audit, PlatformTransactionManager transactionManager) {
+	public AdminProvisioningService(UserAccountRepository users, RefreshTokenRepository refreshTokens,
+			PasswordEncoder passwordEncoder, JdbcTemplate jdbc, AuditLog audit,
+			PlatformTransactionManager transactionManager, Clock clock) {
 		this.users = users;
+		this.refreshTokens = refreshTokens;
+		this.clock = clock;
 		this.passwordEncoder = passwordEncoder;
 		this.jdbc = jdbc;
 		this.audit = audit;
@@ -105,6 +135,104 @@ public class AdminProvisioningService {
 			PhoneNumber phone, @Nullable String email, String password) {
 		return provision(new Attempt(Mode.ADDITIONAL, phone, email), provisionerIdentifier, provisionerPassword, fullName,
 				password);
+	}
+
+	/**
+	 * Disables the account named by {@code accountIdentifier} (phone in +880 form, or email) on
+	 * behalf of an enabled ADMIN (ADR-0029), and revokes all its sessions. Its access tokens are
+	 * refused from its next request (ADR-0028). Refused for an unknown or already disabled account,
+	 * and for the last enabled ADMIN, so the shop is never locked out.
+	 */
+	public StatusChange disableAccount(String provisionerIdentifier, String provisionerPassword,
+			String accountIdentifier, String reason) {
+		return changeStatus(Attempt.forAccount(Mode.DISABLE, accountIdentifier), provisionerIdentifier,
+				provisionerPassword, reason);
+	}
+
+	/**
+	 * Re-enables a disabled account (ADR-0029). Sessions from before stay revoked, and any left
+	 * are revoked now, so the user signs in again and a token stolen before the disable stays dead.
+	 */
+	public StatusChange enableAccount(String provisionerIdentifier, String provisionerPassword,
+			String accountIdentifier, String reason) {
+		return changeStatus(Attempt.forAccount(Mode.ENABLE, accountIdentifier), provisionerIdentifier,
+				provisionerPassword, reason);
+	}
+
+	private StatusChange changeStatus(Attempt attempt, String provisionerIdentifier, String provisionerPassword,
+			String reason) {
+		StatusChange change;
+		try {
+			// The status, the revocations and the success record commit together or not at all.
+			change = transaction.execute(
+					status -> applyStatus(attempt, provisionerIdentifier, provisionerPassword, reason.strip()));
+		}
+		catch (InvalidAdminInput ex) {
+			recordOutcome(attempt, STATUS_CHANGE_REFUSED, ex.code, ex);
+			throw ex;
+		}
+		catch (ProvisioningRefused ex) {
+			recordOutcome(attempt, STATUS_CHANGE_REFUSED, ex.code, ex);
+			throw ex;
+		}
+		catch (RuntimeException ex) {
+			throw failed(attempt, ex);
+		}
+		if (change == null) {
+			throw failed(attempt, new IllegalStateException("The status change returned no result"));
+		}
+		return change;
+	}
+
+	/**
+	 * Lock order: the provisioning lock (serializes status changes, so two runs cannot together
+	 * disable the last two ADMINs), then each of the account's refresh families in a fixed order,
+	 * then the account row. A refresh takes its family lock before the token and account rows, so
+	 * the two never wait on each other in opposite orders, and a rotation in progress commits
+	 * before its family is revoked (ADR-0025).
+	 */
+	private StatusChange applyStatus(Attempt attempt, String provisionerIdentifier, String provisionerPassword,
+			String reason) {
+		if (reason.length() < 3 || reason.length() > 500) {
+			throw new InvalidAdminInput(INVALID_REASON, "The reason must be 3-500 characters");
+		}
+		jdbc.queryForList("SELECT pg_advisory_xact_lock(?)", LOCK_KEY);
+		authorize(attempt, provisionerIdentifier, provisionerPassword);
+		UserAccount account = (attempt.phone != null ? users.findByPhone(attempt.phone.value())
+				: attempt.email != null ? users.findByEmailIgnoringCase(attempt.email) : Optional.<UserAccount>empty())
+			.orElseThrow(() -> new ProvisioningRefused(ACCOUNT_NOT_FOUND, "No account has this phone number or email."));
+		UUID id = account.getId();
+		attempt.accountId = id;
+		attempt.accountRole = account.getRole().name();
+		boolean enable = attempt.mode == Mode.ENABLE;
+		if (enable && account.isEnabled()) {
+			throw new ProvisioningRefused(ALREADY_ENABLED, "This account is already enabled.");
+		}
+		if (!enable && !account.isEnabled()) {
+			throw new ProvisioningRefused(ALREADY_DISABLED, "This account is already disabled.");
+		}
+		if (!enable && account.getRole() == Role.ADMIN) {
+			Integer others = jdbc.queryForObject(
+					"SELECT count(*) FROM users WHERE role = 'ADMIN' AND enabled AND id <> ?", Integer.class, id);
+			if (others == null || others == 0) {
+				throw new ProvisioningRefused(LAST_ENABLED_ADMIN,
+						"This is the last enabled ADMIN; provision another before disabling it.");
+			}
+		}
+		for (UUID familyId : refreshTokens.findActiveFamilyIds(id)) {
+			AuthService.lockFamily(jdbc, familyId);
+		}
+		jdbc.update("UPDATE users SET enabled = ? WHERE id = ?", enable, id);
+		Instant now = clock.instant();
+		int revoked = refreshTokens.revokeAllOfUser(id, now, RevokeReason.ACCOUNT_DISABLED);
+		Map<String, Object> details = attempt.details("SUCCEEDED");
+		details.put("sessionsRevoked", revoked);
+		UUID provisionerId = attempt.provisionerId;
+		if (provisionerId == null) {
+			throw new IllegalStateException("The status change was not authorized");
+		}
+		audit.admin(provisionerId, enable ? ACCOUNT_ENABLED : ACCOUNT_DISABLED, "USER", id, reason, details);
+		return new StatusChange(id, revoked);
 	}
 
 	private UUID provision(Attempt attempt, @Nullable String provisionerIdentifier,
@@ -143,11 +271,13 @@ public class AdminProvisioningService {
 	}
 
 	private ProvisioningFailed failed(Attempt attempt, RuntimeException cause) {
-		ProvisioningFailed failed = new ProvisioningFailed(
-				"Provisioning failed and was rolled back; no administrator was created (" + cause.getClass().getSimpleName()
-						+ ").",
-				cause);
-		recordOutcome(attempt, FAILED, PROVISIONING_FAILED, failed);
+		boolean statusChange = attempt.mode.changesStatus();
+		ProvisioningFailed failed = new ProvisioningFailed((statusChange
+				? "The account status change failed and was rolled back; nothing was changed ("
+				: "Provisioning failed and was rolled back; no administrator was created (")
+				+ cause.getClass().getSimpleName() + ").", cause);
+		recordOutcome(attempt, statusChange ? STATUS_CHANGE_FAILED : FAILED,
+				statusChange ? STATUS_CHANGE_FAILED_CODE : PROVISIONING_FAILED, failed);
 		return failed;
 	}
 
@@ -231,7 +361,8 @@ public class AdminProvisioningService {
 	private void recordOutcome(Attempt attempt, String action, String code, RuntimeException outcome) {
 		try {
 			separateTransaction.executeWithoutResult(status -> {
-				Map<String, Object> details = attempt.details(action.equals(FAILED) ? "FAILED" : "REFUSED");
+				Map<String, Object> details = attempt
+					.details(action.equals(FAILED) || action.equals(STATUS_CHANGE_FAILED) ? "FAILED" : "REFUSED");
 				if (attempt.provisionerId != null) {
 					audit.admin(attempt.provisionerId, action, "USER", null, code, details);
 				}
@@ -246,9 +377,12 @@ public class AdminProvisioningService {
 		catch (RuntimeException auditFailure) {
 			log.error("Admin provisioning ({}) ended with {} but could not be audited: {}", attempt.mode, code,
 					auditFailure.getClass().getName());
-			ProvisioningAuditFailure failure = new ProvisioningAuditFailure("Admin provisioning ended with " + code
-					+ " and could not be recorded in audit_events; nothing was created. Check the database before retrying.",
-					outcome);
+			ProvisioningAuditFailure failure = new ProvisioningAuditFailure((attempt.mode.changesStatus()
+					? "The account status change ended with " + code
+							+ " and could not be recorded in audit_events; nothing was changed."
+					: "Admin provisioning ended with " + code
+							+ " and could not be recorded in audit_events; nothing was created.")
+					+ " Check the database before retrying.", outcome);
 			failure.addSuppressed(auditFailure);
 			throw failure;
 		}
@@ -289,7 +423,8 @@ public class AdminProvisioningService {
 
 		final Mode mode;
 
-		final PhoneNumber phone;
+		/** The target's phone; for a status change named by email (or by nothing valid), null. */
+		final @Nullable PhoneNumber phone;
 
 		final @Nullable String email;
 
@@ -299,10 +434,29 @@ public class AdminProvisioningService {
 		/** The account the provisioner credentials named, even if they were then rejected. */
 		@Nullable UUID claimedProvisionerId;
 
-		Attempt(Mode mode, PhoneNumber phone, @Nullable String email) {
+		/** For a status change: the account found, and its role. */
+		@Nullable UUID accountId;
+
+		@Nullable String accountRole;
+
+		Attempt(Mode mode, @Nullable PhoneNumber phone, @Nullable String email) {
 			this.mode = mode;
 			this.phone = phone;
 			this.email = email == null || email.isBlank() ? null : email.strip().toLowerCase(Locale.ROOT);
+		}
+
+		/** A status change of the account named by phone (+880 form) or email. */
+		static Attempt forAccount(Mode mode, String identifier) {
+			String value = identifier == null ? "" : identifier.strip();
+			if (value.startsWith("+")) {
+				try {
+					return new Attempt(mode, PhoneNumber.of(value), null);
+				}
+				catch (InvalidValueException ex) {
+					return new Attempt(mode, null, null);
+				}
+			}
+			return new Attempt(mode, null, value.contains("@") ? value : null);
 		}
 
 		/** Mode, outcome and the masked target; never a password or the full phone or email. */
@@ -310,9 +464,15 @@ public class AdminProvisioningService {
 			Map<String, Object> details = new LinkedHashMap<>();
 			details.put("mode", mode.name());
 			details.put("outcome", outcome);
-			String digits = phone.value();
-			details.put("targetPhone", "***" + digits.substring(Math.max(0, digits.length() - 3)));
+			if (phone != null) {
+				String digits = phone.value();
+				details.put("targetPhone", "***" + digits.substring(Math.max(0, digits.length() - 3)));
+			}
 			details.put("targetEmailGiven", email != null);
+			if (accountId != null) {
+				details.put("accountId", accountId.toString());
+				details.put("accountRole", accountRole);
+			}
 			// The OS account the process runs as, as the JVM reports it: not a verified operator identity.
 			details.put("processAccount", System.getProperty("user.name", "unknown"));
 			if (provisionerId != null) {

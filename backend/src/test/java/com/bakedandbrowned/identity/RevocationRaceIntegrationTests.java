@@ -15,7 +15,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.bakedandbrowned.common.value.PhoneNumber;
 import com.bakedandbrowned.common.web.ApiException;
+import com.bakedandbrowned.identity.service.AdminProvisioningService;
 import com.bakedandbrowned.identity.service.AuthService;
 
 /**
@@ -36,8 +38,13 @@ class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 
 	private static final long HEAD_START_MS = 300;
 
+	private static final String ADMIN_PASSWORD = "first-admin-password-1";
+
 	@Autowired
 	private AuthService auth;
+
+	@Autowired
+	private AdminProvisioningService provisioning;
 
 	@AfterEach
 	void dropDelays() {
@@ -112,6 +119,30 @@ class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 		report("disable vs refresh", successor);
 		assertThat(attempt(() -> auth.refresh(successor))).as("refreshing after the disable").isEqualTo("401");
 		assertThat(liveTokens()).as("live refresh tokens once the next refresh has run").isZero();
+	}
+
+	@Test
+	void theDisableCommandRacingARefreshLeavesNoTokenEvenAfterReEnabling() throws Exception {
+		// ADR-0029: unlike a bare database update, the command revokes at once, under the family lock.
+		provisioning.provisionFirstAdmin("Store Admin", PhoneNumber.of("+8801711000301"), null, ADMIN_PASSWORD);
+		String phone = register(phone(), null);
+		Session session = login(phone, PASSWORD);
+		delayInsertsOfRefreshTokens();
+
+		List<Future<String>> outcomes = race(() -> auth.refresh(session.refreshToken()).refreshToken(), () -> {
+			provisioning.disableAccount("+8801711000301", ADMIN_PASSWORD, phone, "Phone reported stolen");
+			return "DISABLED";
+		});
+
+		String successor = outcomes.get(0).get(30, TimeUnit.SECONDS);
+		assertThat(outcomes.get(1).get(30, TimeUnit.SECONDS)).isEqualTo("DISABLED");
+		dropDelays();
+		report("disable command vs refresh", successor);
+		assertThat(liveTokens()).as("live refresh tokens right after the disable, before any refresh").isZero();
+
+		provisioning.enableAccount("+8801711000301", ADMIN_PASSWORD, phone, "Phone recovered");
+		assertThat(attempt(() -> auth.refresh(successor))).as("the racing successor after re-enabling").isEqualTo("401");
+		assertThat(attempt(() -> auth.refresh(session.refreshToken()))).isEqualTo("401");
 	}
 
 	@Test

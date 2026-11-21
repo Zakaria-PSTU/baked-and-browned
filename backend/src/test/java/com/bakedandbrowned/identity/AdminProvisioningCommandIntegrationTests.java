@@ -84,6 +84,37 @@ class AdminProvisioningCommandIntegrationTests extends IdentityIntegrationTest {
 	}
 
 	@Test
+	void theDisableAndEnableModesRunAsCommands(CapturedOutput output) throws Exception {
+		command(firstAdminVariables()).close();
+		String phone = register(phone(), null);
+		Session session = login(phone, PASSWORD);
+		Path provisionerSecret = Files.writeString(secrets.resolve("provisioner"), FIRST_PASSWORD + "\n");
+
+		try (ConfigurableApplicationContext disable = command(Map.of("ADMIN_PROVISION_MODE", "disable",
+				"PROVISIONER_IDENTIFIER", FIRST_PHONE, "PROVISIONER_PASSWORD_FILE", provisionerSecret.toString(),
+				"ACCOUNT_IDENTIFIER", phone, "ACCOUNT_CHANGE_REASON", "Phone reported stolen"))) {
+			assertCommandModeOnly(disable);
+		}
+		assertThat(jdbc.queryForObject("SELECT enabled FROM users WHERE phone = ?", Boolean.class, phone)).isFalse();
+		mockMvc.perform(refreshRequest(session))
+			.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+
+		command(Map.of("ADMIN_PROVISION_MODE", "enable", "PROVISIONER_IDENTIFIER", FIRST_PHONE,
+				"PROVISIONER_PASSWORD_FILE", provisionerSecret.toString(), "ACCOUNT_IDENTIFIER", phone,
+				"ACCOUNT_CHANGE_REASON", "Phone recovered"))
+			.close();
+		assertThat(jdbc.queryForObject("SELECT enabled FROM users WHERE phone = ?", Boolean.class, phone)).isTrue();
+		// A reason is required.
+		assertThatThrownBy(() -> command(Map.of("ADMIN_PROVISION_MODE", "disable", "PROVISIONER_IDENTIFIER",
+				FIRST_PHONE, "PROVISIONER_PASSWORD_FILE", provisionerSecret.toString(), "ACCOUNT_IDENTIFIER", phone)))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("ACCOUNT_CHANGE_REASON must be set");
+
+		assertThat(output.getAll()).contains("Disabled account", "and revoked 1 of its sessions", "Enabled account")
+			.doesNotContain(FIRST_PASSWORD, phone);
+	}
+
+	@Test
 	void refusalsFailTheCommandWithoutRevealingAccountsOrCredentials(CapturedOutput output) {
 		command(firstAdminVariables()).close();
 
@@ -95,7 +126,7 @@ class AdminProvisioningCommandIntegrationTests extends IdentityIntegrationTest {
 		assertThatThrownBy(() -> command(Map.of("ADMIN_PROVISION_MODE", "promote", "ADMIN_FULL_NAME", "Second Admin",
 				"ADMIN_PHONE", "+8801711000202", "ADMIN_PASSWORD", SECOND_PASSWORD)))
 			.isInstanceOf(IllegalStateException.class)
-			.hasMessage("ADMIN_PROVISION_MODE must be 'first' or 'additional'");
+			.hasMessage("ADMIN_PROVISION_MODE must be 'first', 'additional', 'disable' or 'enable'");
 
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE role = 'ADMIN'", Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForList("SELECT reason FROM audit_events WHERE action = ? ORDER BY created_at",
