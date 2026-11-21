@@ -1,0 +1,10 @@
+/*
+ * F-2: once admin access is confirmed removed, the read-only page's own error messages (for
+ * example "We could not load the dashboard. Please try again in a moment.") are stale and
+ * contradict the shell's "Admin access removed" message, so they are hidden. The shell's message
+ * sits outside this container and stays visible. ::ng-deep is needed to reach the routed page's
+ * elements from the shell's encapsulated styles.
+ */
+.admin-access-removed ::ng-deep [role='alert'] {
+  display: none;
+}
