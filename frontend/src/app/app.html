@@ -44,6 +44,22 @@
     </div>
   </header>
   <main class="mx-auto max-w-6xl px-4 py-8">
-    <router-outlet />
+    @if (adminAccessRemoved()) {
+      <div
+        role="alert"
+        data-testid="admin-access-removed"
+        class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+      >
+        <p class="font-semibold">Admin access removed</p>
+        <p class="mt-1">
+          Your account no longer has admin access, so this page is read-only and nothing on it can
+          be changed. You are still signed in.
+          <a routerLink="/" class="font-medium underline">Go to the shop</a>
+        </p>
+      </div>
+    }
+    <div [inert]="adminAccessRemoved()" data-testid="page">
+      <router-outlet />
+    </div>
   </main>
 </div>
