@@ -103,7 +103,6 @@ class ProductionReadinessCheckTest {
 		runner.withInitializer(c -> c.getEnvironment().setActiveProfiles("prod"))
 			.run(context -> assertThat(context).hasFailed()
 				.getFailure()
-				.rootCause()
 				.hasMessageContaining("Production configuration is not ready")
 				.hasMessageContaining("app.security.allowed-origins"));
 		// The operator command serves no web traffic.
