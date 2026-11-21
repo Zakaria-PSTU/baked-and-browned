@@ -19,6 +19,7 @@ Secrets come only from the platform's secret store, never from files in the repo
 | `APP_SECURITY_JWT_PRIVATE_KEY` | PKCS#8 PEM RSA key (2048 bits or more) that signs access tokens | Secret store | refused if missing; refused if `allow-ephemeral-key=true` | Restart the app: signed-in users stay signed in |
 | `app.security.jwt.issuer` / `audience` | Token issuer and audience | Defaults | not checked | Match the production API domain |
 | Same-origin hosting | The web app and `/api` are served from one origin, behind HTTPS | Operator | not checked | Open the site and check that API calls go to the same origin and refresh cookies are sent |
+| Staging and other `prod` environments | Every environment run with the `prod` profile, staging included, needs a real HTTPS domain: the readiness check refuses `http://` and localhost origins and addresses | Operator | refused | Plan staging on its own HTTPS subdomain before the first deploy |
 | Trusted proxy | `X-Forwarded-For/-Proto` honoured only from internal proxies (`server.forward-headers-strategy: native`) | Platform | not checked | Rate limits apply per real client IP |
 
 ### Database and files
@@ -50,7 +51,10 @@ Secrets come only from the platform's secret store, never from files in the repo
 - [ ] Alerts on the `admin.*` and `account.*` audit events, and a periodic review of the ADMIN list.
 
 ## 3. Decisions still open
-- [ ] ADR-0023 to ADR-0030 reviewed and Accepted (all Proposed).
+- [x] ADR-0023, 0024, 0025, 0028, 0029 and 0030 Accepted (2026-11-21).
+- [ ] ADR-0018 (SSLCommerz): rerun the gateway contract suite against the sandbox, and decide the high-risk rule.
+- [ ] ADR-0027 (SSL Wireless): get the provider's answers and send one approved real message, then accept.
+- ADR-0026 (key-bound refresh tokens) stays future work.
 - [ ] Real Safari (iOS) and Android Chrome checked: sign-in, refresh after a reload, checkout, payment return (QA-01 / ADR-0023).
 - [ ] Delivery zones: fees set and activated (the seeded zones are inactive and have no fee).
 

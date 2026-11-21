@@ -26,11 +26,11 @@ Format: Context / Decision / Consequences. An accepted ADR is never edited to ch
 | [0020](0020-disallowed-combinations.md) | Disallowed option combinations per product | Accepted | 2026-11-18 |
 | [0021](0021-customization-display-order.md) | Per-product display order of customization groups and options | Accepted | 2026-11-18 |
 | [0022](0022-manual-payment-accounts.md) | Manual payment receiving accounts from configuration | Accepted | 2026-11-18 |
-| [0023](0023-refresh-recovery-after-aborted-navigation.md) | Strict refresh rotation with browser-side recovery from aborted navigations (revision 4) | Proposed | 2026-11-20 |
-| [0024](0024-additional-admin-provisioning.md) | Provision additional admins through the operator command (revision 3) | Proposed | 2026-11-19 |
-| [0025](0025-absolute-session-lifetime-and-revocation-synchronization.md) | Absolute session lifetime and revocation synchronization | Proposed | 2026-11-20 |
+| [0023](0023-refresh-recovery-after-aborted-navigation.md) | Strict refresh rotation with browser-side recovery from aborted navigations (revision 4) | Accepted (amended 2026-11-21) | 2026-11-20 |
+| [0024](0024-additional-admin-provisioning.md) | Provision additional admins through the operator command (revision 3) | Accepted (amended 2026-11-21) | 2026-11-19 |
+| [0025](0025-absolute-session-lifetime-and-revocation-synchronization.md) | Absolute session lifetime and revocation synchronization | Accepted (amended 2026-11-21) | 2026-11-20 |
 | [0026](0026-key-bound-refresh-tokens.md) | Key-bound refresh tokens (proof of possession), future | Proposed | 2026-11-20 |
 | [0027](0027-live-sms-provider.md) | Live SMS provider: SSL Wireless ISMS Plus, failed and expired notices | Proposed | 2026-11-20 |
-| [0028](0028-account-state-on-every-request.md) | Check the account's state on every authenticated request | Proposed | 2026-11-20 |
-| [0029](0029-account-disable-command.md) | Disable and re-enable accounts through the operator command | Proposed | 2026-11-20 |
-| [0030](0030-production-readiness-check.md) | Refuse to start production on local-development defaults | Proposed | 2026-11-21 |
+| [0028](0028-account-state-on-every-request.md) | Check the account's state on every authenticated request | Accepted (corrected 2026-11-21) | 2026-11-20 |
+| [0029](0029-account-disable-command.md) | Disable and re-enable accounts through the operator command | Accepted | 2026-11-20 |
+| [0030](0030-production-readiness-check.md) | Refuse to start production on local-development defaults | Accepted | 2026-11-21 |

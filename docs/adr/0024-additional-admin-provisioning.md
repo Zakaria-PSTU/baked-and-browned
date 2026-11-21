@@ -1,6 +1,6 @@
 # ADR-0024: Provision additional admins through the operator command
 
-- Status: Proposed (revision 3: password sources restricted, web-server guard, secret-file requirements)
+- Status: Accepted 2026-11-21 (revision 3: password sources restricted, web-server guard, secret-file requirements; with the 2026-11-21 amendment below)
 - Date: 2026-11-19
 - Builds on: ADR-0013 (first ADMIN by an operator-run command), ADR-0016 (SMS notices), ADR-0017 (second-approver refund review)
 
@@ -163,3 +163,7 @@ All counts are from actual runs.
   - With the success record moved after the commit, 1 test failed (`aFailedSuccessAuditRollsBackTheNewAdmin`).
   - With the audit-write error swallowed in code, no test failed: PostgreSQL aborts the failed transaction regardless, so the admin is still rolled back.
 - **Full build (revision 3):** `./mvnw -B clean verify` ran 529 tests, 0 failures, 0 errors, 0 skipped. The spec check passes. An earlier run of the same build failed before any test ran: the Testcontainers PostgreSQL did not become ready in time. An unchanged rerun passed.
+
+## Amendment (2026-11-21, on acceptance)
+- Disabling and re-enabling accounts were added to the same command (ADR-0029, PR #32). That resolves the residual risk "No way to disable or remove an admin without SQL yet".
+- The SMS adapter exists (ADR-0027, PR #28). Production startup now waits only on the SSL Wireless account.

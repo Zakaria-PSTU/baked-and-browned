@@ -1,6 +1,6 @@
 # ADR-0030: Refuse to start production on local-development defaults
 
-- Status: Proposed
+- Status: Accepted 2026-11-21
 - Date: 2026-11-21
 - Related: ADR-0012 (payment gateways), ADR-0023 and ADR-0025 (refresh and the Origin allow-list), ADR-0027 (SMS sender required in production), ADR-0011 (payment proof storage)
 
