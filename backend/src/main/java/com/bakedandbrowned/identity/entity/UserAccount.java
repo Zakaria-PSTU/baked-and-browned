@@ -56,6 +56,13 @@ public class UserAccount {
 	@Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
 	private Instant updatedAt;
 
+	/**
+	 * ADR-0031: moves on (by a database trigger, never by the application) whenever
+	 * {@code enabled} changes. Starts at 0, the column default, for a new account.
+	 */
+	@Column(name = "token_version", nullable = false, insertable = false, updatable = false)
+	private int tokenVersion;
+
 	protected UserAccount() {
 	}
 
@@ -108,6 +115,11 @@ public class UserAccount {
 
 	public Instant getUpdatedAt() {
 		return updatedAt;
+	}
+
+	/** The version every token of this account must carry (ADR-0031). */
+	public int getTokenVersion() {
+		return tokenVersion;
 	}
 
 	/** Never include the hash, email or full phone number. */

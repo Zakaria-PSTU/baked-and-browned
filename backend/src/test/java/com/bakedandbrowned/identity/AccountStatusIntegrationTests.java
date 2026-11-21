@@ -3,6 +3,7 @@ package com.bakedandbrowned.identity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -81,6 +82,25 @@ class AccountStatusIntegrationTests extends IdentityIntegrationTest {
 		});
 		assertThat(records.get(0).get("reason")).isEqualTo(REASON);
 		assertThat((String) records.get(0).get("details")).contains("\"sessionsRevoked\": 2", "\"accountRole\": \"CUSTOMER\"");
+	}
+
+	@Test
+	void anAccessTokenFromBeforeADisableStaysRefusedAfterReEnabling() throws Exception {
+		// QA F-1 (D-07, ADR-0031): re-enabling must not revive a token issued before the disable.
+		firstAdmin();
+		String phone = register(phone(), null);
+		Session before = login(phone, PASSWORD);
+		orders(before).andExpect(status().isOk());
+
+		provisioning.disableAccount(ADMIN_PHONE, ADMIN_PASSWORD, phone, REASON);
+		orders(before).andExpect(status().isUnauthorized());
+		provisioning.enableAccount(ADMIN_PHONE, ADMIN_PASSWORD, phone, "Phone recovered");
+
+		orders(before).andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
+		mockMvc.perform(refreshRequest(before)).andExpect(status().isUnauthorized());
+		// A fresh sign-in works, and its token is accepted.
+		orders(login(phone, PASSWORD)).andExpect(status().isOk());
 	}
 
 	@Test
@@ -193,6 +213,10 @@ class AccountStatusIntegrationTests extends IdentityIntegrationTest {
 
 	private UUID firstAdmin() {
 		return provisioning.provisionFirstAdmin("Store Admin", PhoneNumber.of(ADMIN_PHONE), null, ADMIN_PASSWORD);
+	}
+
+	private org.springframework.test.web.servlet.ResultActions orders(Session session) throws Exception {
+		return mockMvc.perform(get("/api/v1/orders").header(HttpHeaders.AUTHORIZATION, session.bearer()));
 	}
 
 	private boolean enabled(UUID id) {

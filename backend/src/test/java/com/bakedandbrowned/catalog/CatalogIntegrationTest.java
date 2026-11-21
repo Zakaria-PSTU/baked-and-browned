@@ -86,6 +86,16 @@ public abstract class CatalogIntegrationTest {
 				INSERT INTO users (full_name, phone, password_hash, role)
 				VALUES ('Test ' || ?, ?, 'unused', ?::user_role) RETURNING id""", UUID.class, role,
 				"+88019%08d".formatted(SEQUENCE.incrementAndGet()), role);
+		return bearerFor(id);
+	}
+
+	/**
+	 * A fresh bearer header for an existing user, with its current role and token version, as a
+	 * new sign-in would get (ADR-0031: a token from before a disable stays refused after a re-enable).
+	 */
+	protected String bearerFor(UUID id) {
+		java.util.Map<String, Object> user = jdbc
+			.queryForMap("SELECT role::text AS role, token_version FROM users WHERE id = ?", id);
 		Instant now = Instant.now();
 		JwtClaimsSet claims = JwtClaimsSet.builder()
 			.issuer("https://api.bakedandbrowned.com.bd")
@@ -93,7 +103,8 @@ public abstract class CatalogIntegrationTest {
 			.subject(id.toString())
 			.issuedAt(now)
 			.expiresAt(now.plus(Duration.ofMinutes(15)))
-			.claim("roles", List.of(role))
+			.claim("roles", List.of(user.get("role")))
+			.claim("ver", user.get("token_version"))
 			.build();
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId("bb-access-1").build();
 		return "Bearer " + jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

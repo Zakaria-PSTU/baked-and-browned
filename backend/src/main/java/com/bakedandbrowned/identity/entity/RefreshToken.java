@@ -66,24 +66,40 @@ public class RefreshToken {
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
+	/**
+	 * The account's token version when the family was signed in (ADR-0031), copied unchanged to
+	 * every successor. A refresh is refused once the account's version has moved on.
+	 */
+	@Column(name = "token_version", nullable = false, updatable = false)
+	private int tokenVersion;
+
 	protected RefreshToken() {
 	}
 
 	private RefreshToken(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt,
-			Instant familyExpiresAt) {
+			Instant familyExpiresAt, int tokenVersion) {
 		if (expiresAt.isAfter(familyExpiresAt)) {
 			throw new IllegalArgumentException("a refresh token must not outlive its family");
+		}
+		if (tokenVersion < 0) {
+			throw new IllegalArgumentException("a token version is never negative");
 		}
 		this.user = user;
 		this.tokenHash = tokenHash;
 		this.familyId = familyId;
 		this.expiresAt = expiresAt;
 		this.familyExpiresAt = familyExpiresAt;
+		this.tokenVersion = tokenVersion;
 	}
 
+	/** @param tokenVersion the family's version: the account's at sign-in, then the presented token's */
 	public static RefreshToken issue(UserAccount user, String tokenHash, UUID familyId, Instant expiresAt,
-			Instant familyExpiresAt) {
-		return new RefreshToken(user, tokenHash, familyId, expiresAt, familyExpiresAt);
+			Instant familyExpiresAt, int tokenVersion) {
+		return new RefreshToken(user, tokenHash, familyId, expiresAt, familyExpiresAt, tokenVersion);
+	}
+
+	public int getTokenVersion() {
+		return tokenVersion;
 	}
 
 	public boolean isRevoked() {

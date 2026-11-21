@@ -129,12 +129,16 @@ class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 		Session session = login(phone, PASSWORD);
 		delayInsertsOfRefreshTokens();
 
-		List<Future<String>> outcomes = race(() -> auth.refresh(session.refreshToken()).refreshToken(), () -> {
+		List<Future<String>> outcomes = race(() -> {
+			var rotated = auth.refresh(session.refreshToken());
+			return rotated.refreshToken() + " " + rotated.response().accessToken();
+		}, () -> {
 			provisioning.disableAccount("+8801711000301", ADMIN_PASSWORD, phone, "Phone reported stolen");
 			return "DISABLED";
 		});
 
-		String successor = outcomes.get(0).get(30, TimeUnit.SECONDS);
+		String[] racing = outcomes.get(0).get(30, TimeUnit.SECONDS).split(" ");
+		String successor = racing[0];
 		assertThat(outcomes.get(1).get(30, TimeUnit.SECONDS)).isEqualTo("DISABLED");
 		dropDelays();
 		report("disable command vs refresh", successor);
@@ -143,6 +147,51 @@ class RevocationRaceIntegrationTests extends IdentityIntegrationTest {
 		provisioning.enableAccount("+8801711000301", ADMIN_PASSWORD, phone, "Phone recovered");
 		assertThat(attempt(() -> auth.refresh(successor))).as("the racing successor after re-enabling").isEqualTo("401");
 		assertThat(attempt(() -> auth.refresh(session.refreshToken()))).isEqualTo("401");
+		// ADR-0031: neither access token, the original nor the racing one, is accepted again.
+		assertThat(ordersStatus(racing[1])).as("the racing access token after re-enabling").isEqualTo(401);
+		assertThat(ordersStatus(session.accessToken())).as("the original access token after re-enabling")
+			.isEqualTo(401);
+	}
+
+	@Test
+	void aSignInRacingADisableGetsNothingThatOutlivesTheDisable() throws Exception {
+		// ADR-0031: the sign-in reads the account (enabled, version N) before the disable commits and
+		// saves its session after; its tokens carry N, which the disable has already moved on.
+		provisioning.provisionFirstAdmin("Store Admin", PhoneNumber.of("+8801711000302"), null, ADMIN_PASSWORD);
+		String phone = register(phone(), null);
+		delayInsertsOfRefreshTokens();
+
+		List<Future<String>> outcomes = race(() -> {
+			var signedIn = auth.login(new com.bakedandbrowned.identity.dto.LoginRequest(phone, PASSWORD));
+			return signedIn.refreshToken() + " " + signedIn.response().accessToken();
+		}, () -> {
+			provisioning.disableAccount("+8801711000302", ADMIN_PASSWORD, phone, "Phone reported stolen");
+			return "DISABLED";
+		});
+
+		String[] racing = outcomes.get(0).get(30, TimeUnit.SECONDS).split(" ");
+		assertThat(outcomes.get(1).get(30, TimeUnit.SECONDS)).isEqualTo("DISABLED");
+		dropDelays();
+		report("sign-in vs disable command", racing[0]);
+		assertThat(ordersStatus(racing[1])).as("the racing access token while disabled").isEqualTo(401);
+
+		provisioning.enableAccount("+8801711000302", ADMIN_PASSWORD, phone, "Phone recovered");
+		assertThat(ordersStatus(racing[1])).as("the racing access token after re-enabling").isEqualTo(401);
+		assertThat(attempt(() -> auth.refresh(racing[0]))).as("the racing session after re-enabling").isEqualTo("401");
+		assertThat(liveTokens()).as("live refresh tokens once the racing session was presented").isZero();
+		// A sign-in after the re-enable works.
+		assertThat(ordersStatus(auth.login(new com.bakedandbrowned.identity.dto.LoginRequest(phone, PASSWORD))
+			.response()
+			.accessToken())).isEqualTo(200);
+	}
+
+	private int ordersStatus(String accessToken) throws Exception {
+		return mockMvc
+			.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/orders")
+				.header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+			.andReturn()
+			.getResponse()
+			.getStatus();
 	}
 
 	@Test

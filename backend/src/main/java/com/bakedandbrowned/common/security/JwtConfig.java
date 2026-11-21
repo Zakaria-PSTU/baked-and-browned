@@ -34,6 +34,12 @@ public class JwtConfig {
 	/** Claim holding the user's roles, for example {@code ["CUSTOMER"]}. */
 	public static final String ROLES_CLAIM = "roles";
 
+	/**
+	 * Claim holding the account's token version when the token was issued (ADR-0031). Checked on
+	 * every request by {@code AccountStateJwtConverter}; a token without it is refused.
+	 */
+	public static final String VERSION_CLAIM = "ver";
+
 	private static final Logger log = LoggerFactory.getLogger(JwtConfig.class);
 
 	@Bean

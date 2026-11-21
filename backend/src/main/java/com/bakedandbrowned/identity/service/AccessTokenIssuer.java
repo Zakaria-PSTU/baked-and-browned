@@ -18,9 +18,10 @@ import com.bakedandbrowned.common.security.SecurityProperties;
 import com.bakedandbrowned.identity.entity.UserAccount;
 
 /**
- * Issues short-lived RS256 access tokens: {@code sub} = user id, {@code roles} = [role], plus
- * {@code iss}, {@code aud}, {@code iat}, {@code exp} and a unique {@code jti}. No personal data
- * (name, phone, email) goes into the token.
+ * Issues short-lived RS256 access tokens: {@code sub} = user id, {@code roles} = [role],
+ * {@code ver} = the account's token version (ADR-0031), plus {@code iss}, {@code aud},
+ * {@code iat}, {@code exp} and a unique {@code jti}. No personal data (name, phone, email) goes
+ * into the token.
  */
 @Component
 public class AccessTokenIssuer {
@@ -40,7 +41,8 @@ public class AccessTokenIssuer {
 		this.keyId = key.keyId();
 	}
 
-	public String issue(UserAccount user) {
+	/** @param tokenVersion the session's token version, which the caller checked equals the account's */
+	public String issue(UserAccount user, int tokenVersion) {
 		Instant now = clock.instant();
 		JwtClaimsSet claims = JwtClaimsSet.builder()
 			.issuer(properties.issuer())
@@ -50,6 +52,7 @@ public class AccessTokenIssuer {
 			.expiresAt(now.plus(properties.accessTokenTtl()))
 			.id(UUID.randomUUID().toString())
 			.claim(JwtConfig.ROLES_CLAIM,List.of(user.getRole().name()))
+			.claim(JwtConfig.VERSION_CLAIM, tokenVersion)
 			.build();
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(keyId).build();
 		return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

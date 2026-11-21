@@ -108,6 +108,34 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 	}
 
 	@Test
+	void theTokenVersionClaimMustBePresentWellFormedAndCurrent() throws Exception {
+		// ADR-0031: fail closed on a missing or malformed "ver", and on any version but the account's.
+		UUID adminId = jdbc.queryForObject("""
+				INSERT INTO users (full_name, phone, password_hash, role)
+				VALUES ('Version Admin', ?, 'unused', 'ADMIN') RETURNING id""", UUID.class, phone());
+		Instant now = Instant.now();
+		java.util.function.Function<JwtClaimsSet.Builder, String> asAdmin = claims -> "Bearer "
+				+ encode(jwtEncoder, claims.subject(adminId.toString()).claim("roles", List.of("ADMIN")));
+
+		for (JwtClaimsSet.Builder bad : List.of(valid(now).claims(c -> c.remove("ver")), valid(now).claim("ver", "0"),
+				valid(now).claim("ver", -1), valid(now).claim("ver", 0.5), valid(now).claim("ver", true),
+				valid(now).claim("ver", 1))) {
+			mockMvc.perform(get("/api/v1/admin/orders").header(HttpHeaders.AUTHORIZATION, asAdmin.apply(bad)))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("INVALID_TOKEN"))
+				.andExpect(jsonPath("$.detail").value("The access token is invalid or has expired."));
+		}
+		mockMvc.perform(get("/api/v1/admin/orders").header(HttpHeaders.AUTHORIZATION, asAdmin.apply(valid(now))))
+			.andExpect(status().isOk());
+
+		// Real sign-ins carry the account's current version.
+		Session session = login(register(phone(), null), PASSWORD);
+		String payload = new String(java.util.Base64.getUrlDecoder().decode(session.accessToken().split("\\.")[1]),
+				java.nio.charset.StandardCharsets.UTF_8);
+		org.assertj.core.api.Assertions.assertThat(payload).contains("\"ver\":0");
+	}
+
+	@Test
 	void accessTokensCarryNoPersonalData() throws Exception {
 		String phone = phone();
 		Session session = login(register(phone, "afsana@example.com"), PASSWORD);
@@ -136,7 +164,8 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 			.subject(UUID.randomUUID().toString())
 			.issuedAt(now)
 			.expiresAt(now.plus(Duration.ofMinutes(15)))
-			.claim("roles", List.of("CUSTOMER"));
+			.claim("roles", List.of("CUSTOMER"))
+			.claim("ver", 0);
 	}
 
 	private static String encode(JwtEncoder encoder, JwtClaimsSet.Builder claims) {

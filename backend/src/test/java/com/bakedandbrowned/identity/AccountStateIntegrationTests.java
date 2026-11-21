@@ -36,14 +36,54 @@ class AccountStateIntegrationTests extends IdentityIntegrationTest {
 	}
 
 	@Test
-	void reEnablingAnAccountRestoresItsToken() throws Exception {
+	void reEnablingByHandRevivesNeitherTheTokenNorTheSession() throws Exception {
+		// QA F-1 (ADR-0031), by direct SQL: nothing revoked the session here, yet neither the old
+		// access token nor a transparent refresh with the old cookie brings it back.
 		String phone = register(phone(), null);
 		Session session = login(phone, PASSWORD);
+		String other = register(phone(), null);
+		Session bystander = login(other, PASSWORD);
 		jdbc.update("UPDATE users SET enabled = false WHERE phone = ?", phone);
 		as(session, "/api/v1/orders").andExpect(status().isUnauthorized());
 
 		jdbc.update("UPDATE users SET enabled = true WHERE phone = ?", phone);
-		as(session, "/api/v1/orders").andExpect(status().isOk());
+		as(session, "/api/v1/orders").andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
+		mockMvc.perform(refreshRequest(session)).andExpect(status().isUnauthorized());
+		org.assertj.core.api.Assertions
+			.assertThat(jdbc.queryForList("""
+					SELECT DISTINCT revoke_reason FROM refresh_tokens t JOIN users u ON u.id = t.user_id
+					WHERE u.phone = ?""", String.class, phone))
+			.containsExactly("ACCOUNT_DISABLED");
+
+		// A fresh sign-in works; the other user was never affected.
+		as(login(phone, PASSWORD), "/api/v1/orders").andExpect(status().isOk());
+		as(bystander, "/api/v1/orders").andExpect(status().isOk());
+		mockMvc.perform(refreshRequest(bystander)).andExpect(status().isOk());
+		org.assertj.core.api.Assertions
+			.assertThat(jdbc.queryForObject("SELECT token_version FROM users WHERE phone = ?", Integer.class, other))
+			.isZero();
+	}
+
+	@Test
+	void afterAReEnableTheNewSessionStillDetectsReplay() throws Exception {
+		// ADR-0031 keeps strict rotation (ADR-0023, ADR-0025): a replayed token ends the session.
+		String phone = register(phone(), null);
+		jdbc.update("UPDATE users SET enabled = false WHERE phone = ?", phone);
+		jdbc.update("UPDATE users SET enabled = true WHERE phone = ?", phone);
+		Session fresh = login(phone, PASSWORD);
+		org.springframework.test.web.servlet.MvcResult rotated = mockMvc.perform(refreshRequest(fresh))
+			.andExpect(status().isOk())
+			.andReturn();
+		Session next = Session.from(rotated, json);
+
+		mockMvc.perform(refreshRequest(fresh)).andExpect(status().isUnauthorized());
+		mockMvc.perform(refreshRequest(next)).andExpect(status().isUnauthorized());
+		org.assertj.core.api.Assertions
+			.assertThat(jdbc.queryForList("""
+					SELECT DISTINCT revoke_reason FROM refresh_tokens t JOIN users u ON u.id = t.user_id
+					WHERE u.phone = ? AND t.revoked_at IS NOT NULL""", String.class, phone))
+			.containsExactly("REUSE_DETECTED");
 	}
 
 	@Test
