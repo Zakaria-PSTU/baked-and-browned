@@ -12,8 +12,11 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -29,22 +32,38 @@ import org.springframework.stereotype.Component;
  * {@code prod}, except for the operator command ({@code provision-admin}), which serves no web
  * traffic. Cash on delivery as the only payment method is a business choice, so it is logged as a
  * warning, not refused.
+ * <p>
+ * It is a {@link BeanFactoryPostProcessor} so that Spring runs the check before creating any
+ * ordinary bean: before the web server, the DataSource, Flyway and everything that uses the
+ * database. A refused configuration therefore opens no database connection and runs no migration
+ * (QA finding F-3). It needs nothing but the {@link Environment}.
  */
 @Component
 @Profile("prod & !provision-admin")
-public class ProductionReadinessCheck {
+public class ProductionReadinessCheck implements BeanFactoryPostProcessor, EnvironmentAware {
 
 	private static final Logger log = LoggerFactory.getLogger(ProductionReadinessCheck.class);
 
 	private static final Set<String> LOCAL_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]", "::1", "0.0.0.0");
 
-	public ProductionReadinessCheck(Environment environment) {
-		List<String> problems = problems(environment);
+	/** Set by Spring before {@link #postProcessBeanFactory}; post-processors get no constructor injection. */
+	private @Nullable Environment environment;
+
+	@Override
+	public void setEnvironment(Environment environment) {
+		this.environment = environment;
+	}
+
+	/** Runs the check; called before any ordinary bean is created, so before any database access. */
+	@Override
+	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+		Environment env = environment != null ? environment : beanFactory.getBean(Environment.class);
+		List<String> problems = problems(env);
 		if (!problems.isEmpty()) {
 			throw new IllegalStateException("Production configuration is not ready (ADR-0030):\n - "
 					+ String.join("\n - ", problems) + "\nSee docs/launch-readiness.md.");
 		}
-		for (String warning : warnings(environment)) {
+		for (String warning : warnings(env)) {
 			log.warn(warning);
 		}
 	}
