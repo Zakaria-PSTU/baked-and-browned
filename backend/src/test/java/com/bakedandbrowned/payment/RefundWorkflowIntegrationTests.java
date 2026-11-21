@@ -373,6 +373,9 @@ class RefundWorkflowIntegrationTests extends ManualPaymentIntegrationTest {
 		assertThat(refundStatus(refundId)).isEqualTo("REQUESTED");
 
 		jdbc.update("UPDATE users SET enabled = TRUE WHERE id = ?", reviewerId);
+		// Re-enabled, the old token stays refused (ADR-0031); the reviewer signs in again.
+		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isUnauthorized());
+		reviewer = bearerFor(reviewerId);
 		decideRefund(reviewer, refundId, "APPROVE", "Approve").andExpect(status().isOk());
 		jdbc.update("UPDATE users SET enabled = FALSE WHERE id = ?", userIdOf(admin));
 		complete(refundId, "BANK-9").andExpect(status().isUnauthorized());

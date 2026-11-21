@@ -97,4 +97,44 @@ class IdentityAndAuditSchemaTests extends AbstractSchemaTest {
 		jdbc.update("INSERT INTO audit_events (actor_type, action, entity_type) VALUES ('SYSTEM', 'HOLD_EXPIRED', 'order')");
 	}
 
+	@Test
+	void theTokenVersionMovesOnlyWhenEnabledChanges() {
+		// V16 (ADR-0031): by any path, the command or a hand-written UPDATE, and never otherwise.
+		UUID id = user();
+		assertThat(version(id)).isZero();
+
+		jdbc.update("UPDATE users SET full_name = 'Renamed', role = 'ADMIN' WHERE id = ?", id);
+		jdbc.update("UPDATE users SET enabled = true WHERE id = ?", id); // unchanged value
+		assertThat(version(id)).as("no enabled change").isZero();
+
+		jdbc.update("UPDATE users SET enabled = false WHERE id = ?", id);
+		assertThat(version(id)).isEqualTo(1);
+		jdbc.update("UPDATE users SET enabled = true WHERE id = ?", id);
+		assertThat(version(id)).isEqualTo(2);
+
+		// It cannot be set directly, not even back to an old value that old tokens carry.
+		jdbc.update("UPDATE users SET token_version = 0 WHERE id = ?", id);
+		jdbc.update("UPDATE users SET token_version = 0, enabled = false WHERE id = ?", id);
+		assertThat(version(id)).isEqualTo(3);
+		// Another account is untouched.
+		assertThat(version(user())).isZero();
+	}
+
+	@Test
+	void tokenVersionsAreNeverNegative() {
+		assertRejectedBy("ck_users_token_version", () -> jdbc.update("""
+				INSERT INTO users (full_name, phone, password_hash, token_version) VALUES ('X', ?, 'hash', -1)""",
+				phone()));
+		UUID id = user();
+		assertRejectedBy("ck_refresh_token_version", () -> jdbc.update("""
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at, token_version)
+				VALUES (?, ?, now() + interval '1 day', gen_random_uuid(), now() + interval '2 days', -1)""", id,
+				"b".repeat(64)));
+	}
+
+	private int version(UUID id) {
+		Integer version = jdbc.queryForObject("SELECT token_version FROM users WHERE id = ?", Integer.class, id);
+		return version == null ? -1 : version;
+	}
+
 }

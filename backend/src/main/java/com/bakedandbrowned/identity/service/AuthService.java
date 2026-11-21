@@ -131,7 +131,8 @@ public class AuthService {
 		}
 		UserAccount user = account.get();
 		Instant now = clock.instant();
-		return startSession(user, UUID.randomUUID(), now.plus(lifetime(user).absolute()), now).session();
+		return startSession(user, UUID.randomUUID(), now.plus(lifetime(user).absolute()), user.getTokenVersion(), now)
+			.session();
 	}
 
 	/**
@@ -162,7 +163,14 @@ public class AuthService {
 			refreshTokens.revokeFamily(token.getFamilyId(), now, RevokeReason.ACCOUNT_DISABLED);
 			throw invalidRefreshToken();
 		}
-		Started successor = startSession(user, token.getFamilyId(), token.getFamilyExpiresAt(), now);
+		// ADR-0031: the account was disabled (and perhaps re-enabled) since this family signed in,
+		// for example by hand in the database, where nothing revoked it. Never revive it.
+		if (token.getTokenVersion() != user.getTokenVersion()) {
+			refreshTokens.revokeFamily(token.getFamilyId(), now, RevokeReason.ACCOUNT_DISABLED);
+			throw invalidRefreshToken();
+		}
+		Started successor = startSession(user, token.getFamilyId(), token.getFamilyExpiresAt(),
+				token.getTokenVersion(), now);
 		token.markReplaced(now, successor.refreshToken().getId());
 		return successor.session();
 	}
@@ -202,14 +210,17 @@ public class AuthService {
 	/**
 	 * Issues the family's next refresh token. It expires after the role's idle lifetime, but never
 	 * after {@code familyExpiresAt} (ADR-0025), and the cookie lives exactly as long as the token.
+	 * Both tokens carry {@code tokenVersion}, which callers have checked equals the account's
+	 * (ADR-0031).
 	 */
-	private Started startSession(UserAccount user, UUID familyId, Instant familyExpiresAt, Instant now) {
+	private Started startSession(UserAccount user, UUID familyId, Instant familyExpiresAt, int tokenVersion,
+			Instant now) {
 		String raw = OpaqueTokens.generate();
 		Instant idleEnd = now.plus(lifetime(user).idle());
 		Instant expiresAt = idleEnd.isBefore(familyExpiresAt) ? idleEnd : familyExpiresAt;
-		RefreshToken stored = refreshTokens
-			.save(RefreshToken.issue(user, OpaqueTokens.sha256Hex(raw), familyId, expiresAt, familyExpiresAt));
-		AuthResponse response = AuthResponse.bearer(accessTokens.issue(user), accessTokens.ttlSeconds(),
+		RefreshToken stored = refreshTokens.save(RefreshToken.issue(user, OpaqueTokens.sha256Hex(raw), familyId,
+				expiresAt, familyExpiresAt, tokenVersion));
+		AuthResponse response = AuthResponse.bearer(accessTokens.issue(user, tokenVersion), accessTokens.ttlSeconds(),
 				UserResponse.from(user));
 		return new Started(new AuthSession(response, raw, Duration.between(now, expiresAt)), stored);
 	}

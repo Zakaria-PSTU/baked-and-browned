@@ -22,6 +22,11 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
  * {@code roles} claim: a demoted ADMIN acts as a CUSTOMER from their next request, and is refused
  * {@code /admin/**} (403). One primary-key lookup per request that presents a token; requests
  * without one are not looked up.
+ * <p>
+ * The token's {@code ver} must equal the account's {@code token_version} (ADR-0031), which moves on
+ * whenever the account is disabled or re-enabled. So a token issued before a disable stays refused
+ * after a re-enable. A token without {@code ver}, or with anything but a non-negative whole number,
+ * is refused the same way (fail closed).
  */
 final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
@@ -34,9 +39,11 @@ final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthentic
 	@Override
 	public AbstractAuthenticationToken convert(Jwt jwt) {
 		UUID userId = userId(jwt);
-		List<Map<String, Object>> found = jdbc.queryForList("SELECT role::text AS role, enabled FROM users WHERE id = ?",
-				userId);
-		if (found.isEmpty() || !Boolean.TRUE.equals(found.get(0).get("enabled"))) {
+		long tokenVersion = tokenVersion(jwt);
+		List<Map<String, Object>> found = jdbc.queryForList(
+				"SELECT role::text AS role, enabled, token_version FROM users WHERE id = ?", userId);
+		if (found.isEmpty() || !Boolean.TRUE.equals(found.get(0).get("enabled"))
+				|| !(found.get(0).get("token_version") instanceof Integer current) || current != tokenVersion) {
 			throw refused();
 		}
 		String role = (String) found.get(0).get("role");
@@ -50,6 +57,15 @@ final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthentic
 		catch (IllegalArgumentException | NullPointerException ex) {
 			throw refused();
 		}
+	}
+
+	/** The {@code ver} claim as a whole number of at least 0; anything else is refused. */
+	private static long tokenVersion(Jwt jwt) {
+		Object claim = jwt.getClaims().get(JwtConfig.VERSION_CLAIM);
+		if ((claim instanceof Long || claim instanceof Integer) && ((Number) claim).longValue() >= 0) {
+			return ((Number) claim).longValue();
+		}
+		throw refused();
 	}
 
 	/** Generic on purpose: the response never says whether the account exists or is disabled. */
