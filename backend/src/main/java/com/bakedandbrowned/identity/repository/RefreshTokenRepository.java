@@ -1,6 +1,7 @@
 package com.bakedandbrowned.identity.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,6 +39,20 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 			update RefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
 			where t.familyId = :familyId and t.revokedAt is null""")
 	int revokeFamily(@Param("familyId") UUID familyId, @Param("now") Instant now,
+			@Param("reason") RevokeReason reason);
+
+	/** The families with a still-active token of this user, for taking their locks (ADR-0025). */
+	@Query("""
+			select distinct t.familyId from RefreshToken t
+			where t.user.id = :userId and t.revokedAt is null order by t.familyId""")
+	List<UUID> findActiveFamilyIds(@Param("userId") UUID userId);
+
+	/** Revokes every still-active token of the user; returns how many were revoked. */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update RefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
+			where t.user.id = :userId and t.revokedAt is null""")
+	int revokeAllOfUser(@Param("userId") UUID userId, @Param("now") Instant now,
 			@Param("reason") RevokeReason reason);
 
 }

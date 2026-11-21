@@ -25,7 +25,8 @@ import com.bakedandbrowned.common.value.PhoneNumber;
 import com.bakedandbrowned.identity.service.AdminProvisioningService;
 
 /**
- * Operator-run one-off command that creates an ADMIN, active only under the {@code provision-admin}
+ * Operator-run one-off command that creates an ADMIN or changes whether an account is enabled,
+ * active only under the {@code provision-admin}
  * profile. That profile starts no web server and no scheduled jobs, and the notification and
  * outbox delivery beans are left out (ADR-0024). The command refuses to run if a web server was
  * started anyway, so the profile can never serve traffic without notification delivery.
@@ -35,6 +36,10 @@ import com.bakedandbrowned.identity.service.AdminProvisioningService;
  * <li>{@code ADMIN_PROVISION_MODE=additional}: the same for the new ADMIN, plus
  * {@code PROVISIONER_IDENTIFIER} and {@code PROVISIONER_PASSWORD} of an existing enabled ADMIN who
  * authorizes it.</li>
+ * <li>{@code ADMIN_PROVISION_MODE=disable} or {@code enable} (ADR-0029): the account named by
+ * {@code ACCOUNT_IDENTIFIER} (phone in +880 form, or email), with {@code ACCOUNT_CHANGE_REASON}
+ * (3–500 characters), authorized by {@code PROVISIONER_IDENTIFIER} and
+ * {@code PROVISIONER_PASSWORD}. Either revokes all the account's sessions.</li>
  * </ul>
  * Passwords are read <b>only</b> from a secret file named by {@code ADMIN_PASSWORD_FILE} /
  * {@code PROVISIONER_PASSWORD_FILE} (preferred, for example a mounted container secret) or from the
@@ -90,7 +95,22 @@ class AdminProvisioningRunner implements ApplicationRunner {
 						secret("ADMIN_PASSWORD"));
 				log.info("Provisioned an additional ADMIN account {}", id);
 			}
-			default -> throw new IllegalStateException("ADMIN_PROVISION_MODE must be 'first' or 'additional'");
+			case "disable" -> {
+				AdminProvisioningService.StatusChange change = provisioning.disableAccount(
+						required("PROVISIONER_IDENTIFIER"), secret("PROVISIONER_PASSWORD"), required("ACCOUNT_IDENTIFIER"),
+						required("ACCOUNT_CHANGE_REASON"));
+				log.info("Disabled account {} and revoked {} of its sessions", change.accountId(),
+						change.sessionsRevoked());
+			}
+			case "enable" -> {
+				AdminProvisioningService.StatusChange change = provisioning.enableAccount(
+						required("PROVISIONER_IDENTIFIER"), secret("PROVISIONER_PASSWORD"), required("ACCOUNT_IDENTIFIER"),
+						required("ACCOUNT_CHANGE_REASON"));
+				log.info("Enabled account {}; it must sign in again ({} sessions revoked)", change.accountId(),
+						change.sessionsRevoked());
+			}
+			default -> throw new IllegalStateException(
+					"ADMIN_PROVISION_MODE must be 'first', 'additional', 'disable' or 'enable'");
 		}
 	}
 

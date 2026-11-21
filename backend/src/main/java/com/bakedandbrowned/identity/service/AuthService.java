@@ -145,7 +145,7 @@ public class AuthService {
 		}
 		String hash = OpaqueTokens.sha256Hex(presentedToken);
 		UUID familyId = refreshTokens.findFamilyIdByTokenHash(hash).orElseThrow(AuthService::invalidRefreshToken);
-		lockFamily(familyId);
+		lockFamily(jdbc, familyId);
 		RefreshToken token = refreshTokens.findByTokenHashForUpdate(hash).orElseThrow(AuthService::invalidRefreshToken);
 		Instant now = clock.instant();
 		if (token.isRevoked() || token.isExpiredAt(now)) {
@@ -174,7 +174,7 @@ public class AuthService {
 			return;
 		}
 		refreshTokens.findFamilyIdByTokenHash(OpaqueTokens.sha256Hex(presentedToken)).ifPresent(familyId -> {
-			lockFamily(familyId);
+			lockFamily(jdbc, familyId);
 			refreshTokens.revokeFamily(familyId, clock.instant(), RevokeReason.LOGOUT);
 		});
 	}
@@ -186,7 +186,7 @@ public class AuthService {
 	 * The key is the two-int form, namespaced by {@link #FAMILY_LOCK_CLASS}; a hash collision
 	 * between two families only serializes them, it never skips a lock.
 	 */
-	private void lockFamily(UUID familyId) {
+	static void lockFamily(JdbcTemplate jdbc, UUID familyId) {
 		jdbc.queryForList("SELECT pg_advisory_xact_lock(?, ?)", FAMILY_LOCK_CLASS, familyId.hashCode());
 	}
 

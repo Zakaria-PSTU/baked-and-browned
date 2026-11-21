@@ -126,6 +126,25 @@ refund can never approve it):
 ADMIN_PROVISION_MODE=additional PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD_FILE=/run/secrets/provisioner_password ADMIN_FULL_NAME='Shift Manager' ADMIN_PHONE='+8801YYYYYYYYY' ADMIN_PASSWORD_FILE=/run/secrets/admin_password java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
 ```
 
+**Disable or re-enable an account** (ADR-0029), authorized the same way. `ACCOUNT_IDENTIFIER` is the
+account's phone (`+880…`) or email; `ACCOUNT_CHANGE_REASON` (3–500 characters) is recorded in the audit:
+
+```sh
+ADMIN_PROVISION_MODE=disable PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD_FILE=/run/secrets/provisioner_password ACCOUNT_IDENTIFIER='+8801ZZZZZZZZZ' ACCOUNT_CHANGE_REASON='Phone reported stolen' java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+# later, if appropriate:
+ADMIN_PROVISION_MODE=enable PROVISIONER_IDENTIFIER='+8801XXXXXXXXX' PROVISIONER_PASSWORD_FILE=/run/secrets/provisioner_password ACCOUNT_IDENTIFIER='+8801ZZZZZZZZZ' ACCOUNT_CHANGE_REASON='Phone recovered' java -jar backend/target/backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=provision-admin
+```
+
+- **Disabling** revokes every session of the account at once. Its access tokens are refused from its
+  next request (ADR-0028).
+- **Re-enabling** never revives a session: the user signs in again, so a token stolen before the
+  disable stays dead.
+- **Refusals:** the last enabled ADMIN cannot be disabled (provision another first), and neither can an
+  unknown or already disabled account.
+- **Audit:** every attempt is recorded once (`account.disabled`, `account.enabled`,
+  `account.status_change_refused` or `account.status_change_failed`).
+- **No demotion:** there is no command to demote an ADMIN; disable the account instead.
+
 Notes:
 - The production database and JWT key settings apply as for the web app (`SPRING_DATASOURCE_*`,
   `APP_SECURITY_JWT_PRIVATE_KEY`).
