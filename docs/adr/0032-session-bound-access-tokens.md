@@ -62,3 +62,19 @@ The decision above is unchanged. It is implemented and merged (PR #41, `7579a48`
 - **A session's expiry does not stop its access tokens by itself.** After an idle or absolute expiry, an access token can live for the rest of its 15 minutes unless the session was revoked or its rows were purged.
 - **Rollout assumes a single API instance,** as in ADR-0031. Overlapping old and new instances would cost a user at most one sign-in.
 - **Each device is its own session.** Logging out one device does not end another's.
+
+## Amendment (2026-11-22, per-request cost measured; the query changed, the decision did not)
+- **The cost was measured** on a throwaway PostgreSQL 18.1 cluster (production is PG17) with synthetic data: 100,000 customers and 30,000 sessions, about 1.44 million refresh-token rows. The shape was a worst case: 1% of the sessions 2,400 to 2,900 tokens long, 60% fully revoked, and `refresh_tokens` unlogged (so write timings leave out WAL). The machine was busy, so absolute numbers are noisy; plan shapes and buffer counts are the reliable part.
+- **Finding: the query in the Decision did not give "one index probe".** With `r.user_id = users.id` inside the `EXISTS`, the planner combined `idx_refresh_user` and `idx_refresh_family_active` in a bitmap AND. For a live session of 2,900 tokens it read about 2,880 entries from each index (0.27 ms warm, 0.84 ms cold). Short sessions and revoked sessions were cheap.
+- **The query is now** (`AccountStateJwtConverter`):
+  ```sql
+  SELECT role::text, enabled, token_version,
+         COALESCE((SELECT r.user_id = users.id FROM refresh_tokens r
+                   WHERE r.family_id = ? AND r.revoked_at IS NULL LIMIT 1), false) AS session_live
+  FROM users WHERE id = ?
+  ```
+  It finds a live token of the session by session id alone and compares its owner afterwards. Every token of a session belongs to one account, so the meaning is unchanged: a session of another account, a revoked session and an unknown session are all refused, as before. The plan is a single probe of `idx_refresh_family_active`: 0.115 ms warm for a 2,900-token live session, and 0.07 to 0.1 ms for revoked ones. No migration was needed. A composite partial index on `(family_id, user_id)` gave the same plan shape but needs a migration, so it was not adopted.
+- **What the V17 index buys.** For a revoked 2,900-token session the check took about 0.2 ms with it, against 0.9 ms warm and 3 ms cold without it (the planner filtered about 2,600 rows). Under load, revoked-long sessions ran about 2.6 times faster with the index in all three interleaved rounds.
+- **Overall cost.** The check adds roughly 0.1 to 0.2 ms to an authenticated request when the cache is warm, and up to about 0.8 ms cold. Against the previous account-only lookup (0.05 ms warm), a two-statement throughput loop lost about 12% in the median; the new and the previous form of the query were within noise of each other. At this shop's traffic that is negligible.
+- **Write side.** Logging out a 2,900-token session took 66 to 73 ms with the index against 77 to 87 ms without, and one refresh insert differed by about 0.1 ms, so the index costs nothing noticeable.
+- **Limits of the measurement.** PG18 instead of PG17; synthetic data; an unlogged table; a laptop under other load. Recheck the plan on the real staging database once it has realistic volume. The acceptance note that the cost was unmeasured is superseded by this amendment.
