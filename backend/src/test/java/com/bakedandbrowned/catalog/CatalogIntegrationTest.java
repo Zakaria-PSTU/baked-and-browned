@@ -105,9 +105,23 @@ public abstract class CatalogIntegrationTest {
 			.expiresAt(now.plus(Duration.ofMinutes(15)))
 			.claim("roles", List.of(user.get("role")))
 			.claim("ver", user.get("token_version"))
+			.claim("sid", liveSessionOf(id, (Integer) user.get("token_version")).toString())
 			.build();
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId("bb-access-1").build();
 		return "Bearer " + jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+	}
+
+	/**
+	 * A live session (refresh family) for the user, as a sign-in would leave behind: a token is
+	 * honoured only while its session has a refresh token that is not revoked (ADR-0032).
+	 */
+	protected UUID liveSessionOf(UUID userId, int tokenVersion) {
+		UUID family = UUID.randomUUID();
+		jdbc.update("""
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at, token_version)
+				VALUES (?, ?, now() + interval '1 day', ?, now() + interval '1 day', ?)""", userId,
+				(UUID.randomUUID().toString() + UUID.randomUUID()).replace("-", ""), family, tokenVersion);
+		return family;
 	}
 
 	protected UUID userIdOf(String bearer) {

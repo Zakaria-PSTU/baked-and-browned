@@ -61,3 +61,8 @@ The decision above is unchanged. Accepted with these three points stated explici
 - **Logout does not end access tokens.** After a logout, the access token stays valid for up to 15 minutes, as the Remaining limitations section says. The token version does not change this.
 - **Direct SQL re-enable is not audited.** The trigger guarantees the version moves, but a hand-written `UPDATE` writes no `audit_events` row. The operator command (ADR-0029) is the audited path.
 - **Rollout assumes a single application instance.** The fail-closed behaviour on overlap described under Rollout depends on a single running instance at a time. Multi-instance or blue/green deployment needs its own review.
+
+## Amendment (2026-11-22, ADR-0032)
+- **The logout limitation is resolved by ADR-0032 (Proposed).** Access tokens now carry `sid`, the id of the session they were issued for, and are honoured only while that session is live. After a logout, a reuse detection or a disable, the session's access tokens stop on the next request instead of lasting up to 15 minutes.
+- **`ver` stays.** It still covers a hand-written `UPDATE` of `enabled`, which revokes no session. The two checks are independent and both fail closed.
+- The decision text above and the Rollout notes are unchanged. Until ADR-0032 is accepted, treat the logout limitation as fixed in the code but not yet as an accepted decision.

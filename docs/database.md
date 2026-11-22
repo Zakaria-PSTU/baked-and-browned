@@ -794,6 +794,17 @@ CREATE TRIGGER trg_users_token_version BEFORE UPDATE ON users
 ```
 A token whose version differs from the account's is refused: an access token with 401 on any request, a refresh token with 401 and its family revoked (`ACCOUNT_DISABLED`).
 
+## V17 — active session index (`V17__active_session_index.sql`)
+ADR-0032: an access token is honoured only while the session it was issued for is live, so logout, reuse detection and a disable stop its access tokens at once.
+```sql
+-- Every authenticated request now asks whether the access token's session (refresh family) is
+-- still live: has at least one refresh token that is not revoked (ADR-0032). A revoked family has
+-- none, so a partial index answers that with one probe, and keeps it cheap for a revoked family
+-- too, whose rows can number in the thousands. No data changes.
+CREATE INDEX idx_refresh_family_active ON refresh_tokens (family_id) WHERE revoked_at IS NULL;
+```
+A session is live while any of its refresh tokens has `revoked_at IS NULL`. A refresh marks the old token used but does not revoke it, so a live family always has such a row. `revokeFamily` and `revokeAllOfUser` revoke every one, so a revoked family has none.
+
 ## Service-enforced invariants not fully captured by DDL
 - Refund requests name at most what is left of the payment (amount minus completed refunds); the V7 trigger is the backstop for the total.
 - Selected option belongs to the product and correct group; effective selection count rule (business-rules.md) and product-specific text limit.
