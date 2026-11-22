@@ -41,3 +41,13 @@
   - After a demotion, the admin menus stay visible until the session's next refresh, at most 15 minutes.
   - The API refuses admin actions at once.
 - Disabling is now done with the operator command (ADR-0029). That supersedes "There is no disable or demote API yet" in the Context. Demotion still has no supported path.
+
+## Amendment (2026-11-22, QA finding F-4)
+- **When the admin menus disappear.** The Correction above says they stay visible until the session's next refresh. Since F-2 (PR #37) that is no longer the whole story, and the text is replaced by this:
+  - The web app still takes the role from the sign-in and refresh response, so a demoted admin's page keeps showing the admin menus until something tells it otherwise.
+  - When an admin API request (`/api/v1/admin/**`) is refused with 403 while the tab believes the user is an ADMIN, the app calls `GET /auth/me`. If the account's current role is not ADMIN, the tab updates its role: the admin navigation is removed, the admin route guard closes admin pages, and the shell shows "Admin access removed" over a read-only page (`admin-access.ts`, `admin-access.interceptor.ts`).
+  - A failed `/auth/me` check concludes nothing and changes nothing.
+  - **This is per tab.** Each tab learns of the demotion on its own first refused admin request.
+  - **A tab that makes no admin request keeps showing the menus** until its next refresh or reload (at most 15 minutes for an open page). Removing the menus before the first admin request was considered and not done.
+- **What did not change:** the API refuses admin actions at once, from the account's next request. The menus are display only and give no access.
+- **Disabled accounts.** The 401 path is unchanged: the refresh is refused and the user is signed out.
