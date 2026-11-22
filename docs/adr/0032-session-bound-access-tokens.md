@@ -1,6 +1,6 @@
 # ADR-0032: Bind access tokens to their session, so logout ends them
 
-- Status: Proposed
+- Status: Accepted 2026-11-22 (with the acceptance notes below)
 - Date: 2026-11-22
 - Related: ADR-0025 (refresh-family lock, revocation), ADR-0028 (account state on every request), ADR-0029 (disable command), ADR-0031 (account token version, "Remaining limitations")
 
@@ -55,3 +55,10 @@
 - **Also refusing a token once its family's absolute lifetime has ended.** It would trim the 15-minute tail at the end of a session. It is another behaviour change, left out for now.
 - **Shorter access tokens.** They narrow the window without closing it and multiply refreshes.
 - **A short cache of the lookup.** It brings the delay back (see ADR-0028).
+
+## Acceptance notes (2026-11-22)
+The decision above is unchanged. It is implemented and merged (PR #41, `7579a48`), and accepted with these points stated explicitly:
+- **The per-request cost has not been measured.** The added work is one index probe inside the statement ADR-0028 already makes. Check the query plan against realistic data before relying on it at higher traffic.
+- **A session's expiry does not stop its access tokens by itself.** After an idle or absolute expiry, an access token can live for the rest of its 15 minutes unless the session was revoked or its rows were purged.
+- **Rollout assumes a single API instance,** as in ADR-0031. Overlapping old and new instances would cost a user at most one sign-in.
+- **Each device is its own session.** Logging out one device does not end another's.

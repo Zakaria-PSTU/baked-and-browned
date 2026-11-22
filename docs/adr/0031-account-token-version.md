@@ -66,3 +66,4 @@ The decision above is unchanged. Accepted with these three points stated explici
 - **The logout limitation is resolved by ADR-0032 (Proposed).** Access tokens now carry `sid`, the id of the session they were issued for, and are honoured only while that session is live. After a logout, a reuse detection or a disable, the session's access tokens stop on the next request instead of lasting up to 15 minutes.
 - **`ver` stays.** It still covers a hand-written `UPDATE` of `enabled`, which revokes no session. The two checks are independent and both fail closed.
 - The decision text above and the Rollout notes are unchanged. Until ADR-0032 is accepted, treat the logout limitation as fixed in the code but not yet as an accepted decision.
+- ADR-0032 was accepted on 2026-11-22. The logout limitation described above is resolved as a decision as well as in the code.
