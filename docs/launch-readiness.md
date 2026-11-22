@@ -25,7 +25,7 @@ Secrets come only from the platform's secret store, never from files in the repo
 ### Database and files
 | Setting | What it is | Supplied by | If wrong | How to verify |
 |---|---|---|---|---|
-| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | PostgreSQL 17 | Operator, secret store | startup fails to connect | The Flyway migrations V1–V15 apply on first start |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | PostgreSQL 17 | Operator, secret store | startup fails to connect | The Flyway migrations V1–V17 apply on first start |
 | `APP_PAYMENTS_PROOF_STORAGE_DIRECTORY` | Private volume for manual-payment proof files, outside any web root | Operator | refused (absolute path required) | Upload a proof, and check that it is on the volume and in the backups |
 | Backups | Database and proof volume, together | Operator | not checked | Restore once, before launch |
 
