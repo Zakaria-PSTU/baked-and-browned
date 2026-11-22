@@ -47,10 +47,14 @@ final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthentic
 		UUID userId = userId(jwt);
 		long tokenVersion = tokenVersion(jwt);
 		UUID sessionId = sessionId(jwt);
+		// The live token is found by session alone (LIMIT 1) and its owner compared afterwards. Putting
+		// "r.user_id = users.id" into the subquery makes the planner AND two indexes and read the
+		// whole of a long session's entries; this form is a single probe of idx_refresh_family_active
+		// (V17), measured at about 0.1 ms warm even for a 2,900-token session (ADR-0032, amendment).
 		List<Map<String, Object>> found = jdbc.queryForList("""
 				SELECT role::text AS role, enabled, token_version,
-				       EXISTS (SELECT 1 FROM refresh_tokens r
-				               WHERE r.family_id = ? AND r.user_id = users.id AND r.revoked_at IS NULL) AS session_live
+				       COALESCE((SELECT r.user_id = users.id FROM refresh_tokens r
+				                 WHERE r.family_id = ? AND r.revoked_at IS NULL LIMIT 1), false) AS session_live
 				FROM users WHERE id = ?""", sessionId, userId);
 		if (found.isEmpty() || !Boolean.TRUE.equals(found.get(0).get("enabled"))
 				|| !(found.get(0).get("token_version") instanceof Integer current) || current != tokenVersion
