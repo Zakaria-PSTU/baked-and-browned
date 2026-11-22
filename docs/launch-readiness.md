@@ -1,6 +1,6 @@
 # Launch readiness — Baked & Browned
 
-A checklist for the first production deployment, and for every new environment. Deployments run with `SPRING_PROFILES_ACTIVE=prod`.
+A checklist for the first production deployment, and for every new environment. Deployments run with `SPRING_PROFILES_ACTIVE=prod`. For the order of work and the verification steps on a staging environment, see [staging-runbook.md](staging-runbook.md).
 
 **What the "If wrong" column means:**
 - **refused:** the app does not start, and the message names the setting (`ProductionReadinessCheck`, ADR-0030, or the component noted).

@@ -69,7 +69,8 @@ Run with `SPRING_PROFILES_ACTIVE=prod`, and work through [docs/launch-readiness.
 first. Under `prod` the app refuses to start while a local-development default is still set: localhost
 origins or return URLs, a relative proof directory, insecure cookies, an ephemeral signing key, or an
 enabled SSLCommerz gateway still pointing at the sandbox. The
-message names every setting to fix (ADR-0030).
+message names every setting to fix (ADR-0030). For a staging environment, follow
+[docs/staging-runbook.md](docs/staging-runbook.md).
 
 ## Phase 1A spike findings
 
