@@ -60,3 +60,4 @@
 
 ## Amendment (2026-11-22, ADR-0032)
 - **The logout limit in the previous amendment is resolved by ADR-0032 (Proposed).** A logout now stops its session's access tokens on the next request. The disable and enable command is unchanged: it revokes every session, which now also ends every access token those sessions issued.
+- ADR-0032 was accepted on 2026-11-22.
