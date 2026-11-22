@@ -220,7 +220,7 @@ public class AuthService {
 		Instant expiresAt = idleEnd.isBefore(familyExpiresAt) ? idleEnd : familyExpiresAt;
 		RefreshToken stored = refreshTokens.save(RefreshToken.issue(user, OpaqueTokens.sha256Hex(raw), familyId,
 				expiresAt, familyExpiresAt, tokenVersion));
-		AuthResponse response = AuthResponse.bearer(accessTokens.issue(user, tokenVersion), accessTokens.ttlSeconds(),
+		AuthResponse response = AuthResponse.bearer(accessTokens.issue(user, tokenVersion, familyId), accessTokens.ttlSeconds(),
 				UserResponse.from(user));
 		return new Started(new AuthSession(response, raw, Duration.between(now, expiresAt)), stored);
 	}

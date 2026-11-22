@@ -40,6 +40,12 @@ public class JwtConfig {
 	 */
 	public static final String VERSION_CLAIM = "ver";
 
+	/**
+	 * Claim holding the id of the session (refresh family) the token was issued for (ADR-0032).
+	 * Checked on every request by {@code AccountStateJwtConverter}; a token without it is refused.
+	 */
+	public static final String SESSION_CLAIM = "sid";
+
 	private static final Logger log = LoggerFactory.getLogger(JwtConfig.class);
 
 	@Bean

@@ -103,7 +103,8 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 				VALUES ('Token Admin', ?, 'unused', 'ADMIN') RETURNING id""", UUID.class, phone());
 		mockMvc.perform(get("/api/v1/admin/orders")
 			.header(HttpHeaders.AUTHORIZATION, "Bearer " + encode(jwtEncoder,
-					valid(now).subject(adminId.toString()).claim("roles", List.of("ADMIN")))))
+					valid(now).subject(adminId.toString()).claim("roles", List.of("ADMIN"))
+						.claim("sid", liveSession(adminId).toString()))))
 			.andExpect(status().isOk());
 	}
 
@@ -114,8 +115,10 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 				INSERT INTO users (full_name, phone, password_hash, role)
 				VALUES ('Version Admin', ?, 'unused', 'ADMIN') RETURNING id""", UUID.class, phone());
 		Instant now = Instant.now();
+		UUID adminSession = liveSession(adminId);
 		java.util.function.Function<JwtClaimsSet.Builder, String> asAdmin = claims -> "Bearer "
-				+ encode(jwtEncoder, claims.subject(adminId.toString()).claim("roles", List.of("ADMIN")));
+				+ encode(jwtEncoder, claims.subject(adminId.toString()).claim("roles", List.of("ADMIN"))
+					.claim("sid", adminSession.toString()));
 
 		for (JwtClaimsSet.Builder bad : List.of(valid(now).claims(c -> c.remove("ver")), valid(now).claim("ver", "0"),
 				valid(now).claim("ver", -1), valid(now).claim("ver", 0.5), valid(now).claim("ver", true),
@@ -155,6 +158,16 @@ class AccessControlIntegrationTests extends IdentityIntegrationTest {
 		return result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
 			.as("%s must not be blocked by security", result.getRequest().getRequestURI())
 			.isNotIn(401, 403);
+	}
+
+	/** A live session (refresh family) for the user, so that a hand-built token's "sid" is honoured (ADR-0032). */
+	private UUID liveSession(UUID userId) {
+		UUID family = UUID.randomUUID();
+		jdbc.update("""
+				INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_expires_at)
+				VALUES (?, ?, now() + interval '1 day', ?, now() + interval '1 day')""", userId,
+				(UUID.randomUUID().toString() + UUID.randomUUID()).replace("-", ""), family);
+		return family;
 	}
 
 	private static JwtClaimsSet.Builder valid(Instant now) {

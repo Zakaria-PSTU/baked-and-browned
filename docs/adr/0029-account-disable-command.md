@@ -57,3 +57,6 @@
 - It is closed by the account token version (migration V16, merged in PR #36; the design is ADR-0031, which is still Proposed). A database trigger moves `users.token_version` on by one every time `enabled` changes, whether through this command or a hand-written `UPDATE`. Access tokens and refresh families carry the version they were issued under and are refused when it differs from the account's.
 - **So, with V16 in place:** after a disable followed by a re-enable, neither an access token nor a refresh token issued before the disable is accepted, and the user signs in again. Access tokens issued before V16 was deployed carry no version and are refused (the web app replaces them with one refresh).
 - **Limits.** This covers the disable and enable path only. A logout still leaves its access token valid until it expires, at most 15 minutes (see ADR-0031, "Remaining limitations").
+
+## Amendment (2026-11-22, ADR-0032)
+- **The logout limit in the previous amendment is resolved by ADR-0032 (Proposed).** A logout now stops its session's access tokens on the next request. The disable and enable command is unchanged: it revokes every session, which now also ends every access token those sessions issued.

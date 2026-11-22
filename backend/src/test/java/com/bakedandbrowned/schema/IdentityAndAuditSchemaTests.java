@@ -132,6 +132,15 @@ class IdentityAndAuditSchemaTests extends AbstractSchemaTest {
 				"b".repeat(64)));
 	}
 
+	@Test
+	void liveSessionsAreFoundThroughAPartialIndex() {
+		// V17 (ADR-0032): the per-request "is this session live" probe is served by an index that
+		// holds only the refresh tokens that are not revoked.
+		String definition = jdbc.queryForObject(
+				"SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_refresh_family_active'", String.class);
+		assertThat(definition).contains("(family_id)").contains("WHERE (revoked_at IS NULL)");
+	}
+
 	private int version(UUID id) {
 		Integer version = jdbc.queryForObject("SELECT token_version FROM users WHERE id = ?", Integer.class, id);
 		return version == null ? -1 : version;

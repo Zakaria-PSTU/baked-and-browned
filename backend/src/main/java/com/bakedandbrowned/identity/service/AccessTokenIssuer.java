@@ -19,7 +19,8 @@ import com.bakedandbrowned.identity.entity.UserAccount;
 
 /**
  * Issues short-lived RS256 access tokens: {@code sub} = user id, {@code roles} = [role],
- * {@code ver} = the account's token version (ADR-0031), plus {@code iss}, {@code aud},
+ * {@code ver} = the account's token version (ADR-0031), {@code sid} = the session it belongs to
+ * (ADR-0032), plus {@code iss}, {@code aud},
  * {@code iat}, {@code exp} and a unique {@code jti}. No personal data (name, phone, email) goes
  * into the token.
  */
@@ -41,8 +42,12 @@ public class AccessTokenIssuer {
 		this.keyId = key.keyId();
 	}
 
-	/** @param tokenVersion the session's token version, which the caller checked equals the account's */
-	public String issue(UserAccount user, int tokenVersion) {
+	/**
+	 * @param tokenVersion the session's token version, which the caller checked equals the account's
+	 * @param familyId the session (refresh family) the token belongs to; the token is honoured only
+	 * while that session is live (ADR-0032)
+	 */
+	public String issue(UserAccount user, int tokenVersion, UUID familyId) {
 		Instant now = clock.instant();
 		JwtClaimsSet claims = JwtClaimsSet.builder()
 			.issuer(properties.issuer())
@@ -53,6 +58,7 @@ public class AccessTokenIssuer {
 			.id(UUID.randomUUID().toString())
 			.claim(JwtConfig.ROLES_CLAIM,List.of(user.getRole().name()))
 			.claim(JwtConfig.VERSION_CLAIM, tokenVersion)
+			.claim(JwtConfig.SESSION_CLAIM, familyId.toString())
 			.build();
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(keyId).build();
 		return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

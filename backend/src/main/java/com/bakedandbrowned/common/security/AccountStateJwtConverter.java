@@ -27,6 +27,12 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
  * whenever the account is disabled or re-enabled. So a token issued before a disable stays refused
  * after a re-enable. A token without {@code ver}, or with anything but a non-negative whole number,
  * is refused the same way (fail closed).
+ * <p>
+ * The token's {@code sid} names the session (refresh family) it was issued for, and the session must
+ * still be live (ADR-0032): at least one of its refresh tokens is not revoked. Logout, reuse
+ * detection, a disable and the purge of an expired session all leave a family with none, so they
+ * stop its access tokens on the next request. The check is part of the same single statement. A
+ * token without a canonical-UUID {@code sid}, or naming a session of another account, is refused.
  */
 final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
@@ -40,10 +46,15 @@ final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthentic
 	public AbstractAuthenticationToken convert(Jwt jwt) {
 		UUID userId = userId(jwt);
 		long tokenVersion = tokenVersion(jwt);
-		List<Map<String, Object>> found = jdbc.queryForList(
-				"SELECT role::text AS role, enabled, token_version FROM users WHERE id = ?", userId);
+		UUID sessionId = sessionId(jwt);
+		List<Map<String, Object>> found = jdbc.queryForList("""
+				SELECT role::text AS role, enabled, token_version,
+				       EXISTS (SELECT 1 FROM refresh_tokens r
+				               WHERE r.family_id = ? AND r.user_id = users.id AND r.revoked_at IS NULL) AS session_live
+				FROM users WHERE id = ?""", sessionId, userId);
 		if (found.isEmpty() || !Boolean.TRUE.equals(found.get(0).get("enabled"))
-				|| !(found.get(0).get("token_version") instanceof Integer current) || current != tokenVersion) {
+				|| !(found.get(0).get("token_version") instanceof Integer current) || current != tokenVersion
+				|| !Boolean.TRUE.equals(found.get(0).get("session_live"))) {
 			throw refused();
 		}
 		String role = (String) found.get(0).get("role");
@@ -64,6 +75,23 @@ final class AccountStateJwtConverter implements Converter<Jwt, AbstractAuthentic
 		Object claim = jwt.getClaims().get(JwtConfig.VERSION_CLAIM);
 		if ((claim instanceof Long || claim instanceof Integer) && ((Number) claim).longValue() >= 0) {
 			return ((Number) claim).longValue();
+		}
+		throw refused();
+	}
+
+	/** The {@code sid} claim as a canonical UUID string; anything else is refused. */
+	private static UUID sessionId(Jwt jwt) {
+		Object claim = jwt.getClaims().get(JwtConfig.SESSION_CLAIM);
+		if (claim instanceof String text) {
+			try {
+				UUID id = UUID.fromString(text);
+				if (id.toString().equals(text)) {
+					return id;
+				}
+			}
+			catch (IllegalArgumentException ex) {
+				// falls through to the refusal
+			}
 		}
 		throw refused();
 	}
