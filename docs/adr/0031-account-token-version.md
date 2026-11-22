@@ -1,6 +1,6 @@
 # ADR-0031: Account token version, so re-enabling never revives a token
 
-- Status: Proposed
+- Status: Accepted 2026-11-22 (with the acceptance notes below)
 - Date: 2026-11-21
 - Related: ADR-0025 (refresh-family lock), ADR-0028 (account state on every request), ADR-0029 (disable command). QA finding F-1 (`docs/qa/2026-11-21-admin-and-security-verification.md`, D-07).
 
@@ -55,3 +55,9 @@
 - **A per-account "valid from" timestamp compared with `iat`.** `iat` has one-second precision, and clocks between servers can differ: a skewed clock could let an old token pass (fail open). Rejected.
 - **Binding access tokens to their session**, refused once the session is revoked. Stronger: it would also end tokens at logout. But it adds a query against the session table on every request, changes logout behaviour, and rewrites every test that builds tokens directly. Kept as the follow-up for the logout limitation.
 - **Bumping the version only in the operator command.** It would miss a hand-written `UPDATE` during an incident. Rejected in favour of the trigger.
+
+## Acceptance notes (2026-11-22)
+The decision above is unchanged. Accepted with these three points stated explicitly:
+- **Logout does not end access tokens.** After a logout, the access token stays valid for up to 15 minutes, as the Remaining limitations section says. The token version does not change this.
+- **Direct SQL re-enable is not audited.** The trigger guarantees the version moves, but a hand-written `UPDATE` writes no `audit_events` row. The operator command (ADR-0029) is the audited path.
+- **Rollout assumes a single application instance.** The fail-closed behaviour on overlap described under Rollout depends on a single running instance at a time. Multi-instance or blue/green deployment needs its own review.
