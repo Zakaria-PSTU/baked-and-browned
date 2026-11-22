@@ -16,7 +16,7 @@ Secrets come only from the platform's secret store, never from files in the repo
 |---|---|---|---|---|
 | `APP_SECURITY_ALLOWED_ORIGINS` | Exact https origins of the web app, allowed to refresh and log out | Operator | refused (https only, not localhost) | Sign in on the real site, wait more than 15 min, and keep using it without being signed out |
 | `app.security.secure-cookies` | `Secure` flag on the refresh and XSRF cookies | Default `true` | refused if `false` | Browser dev tools: both cookies show *Secure* |
-| `APP_SECURITY_JWT_PRIVATE_KEY` | PKCS#8 PEM RSA key (2048 bits or more) that signs access tokens | Secret store | refused if missing; refused if `allow-ephemeral-key=true` | Restart the app: signed-in users stay signed in |
+| `APP_SECURITY_JWT_PRIVATE_KEY` | PKCS#8 PEM RSA key (2048 bits or more) that signs access tokens | Secret store | refused if missing or not a valid key (before the database is touched); refused if `allow-ephemeral-key=true` | Restart the app: signed-in users stay signed in |
 | `app.security.jwt.issuer` / `audience` | Token issuer and audience | Defaults | not checked | Match the production API domain |
 | Same-origin hosting | The web app and `/api` are served from one origin, behind HTTPS | Operator | not checked | Open the site and check that API calls go to the same origin and refresh cookies are sent |
 | Staging and other `prod` environments | Every environment run with the `prod` profile, staging included, needs a real HTTPS domain: the readiness check refuses `http://` and localhost origins and addresses | Operator | refused | Plan staging on its own HTTPS subdomain before the first deploy |
@@ -41,7 +41,7 @@ Secrets come only from the platform's secret store, never from files in the repo
 ### SMS (ADR-0027)
 | Setting | What it is | Supplied by | If wrong | How to verify |
 |---|---|---|---|---|
-| `APP_NOTIFICATIONS_SMS_SSL_WIRELESS_ENABLED=true`, `_API_TOKEN`, `_SENDER_ID` | SSL Wireless ISMS Plus | Business account, secret store | refused (no `SmsSender`) | One approved real test SMS |
+| `APP_NOTIFICATIONS_SMS_SSL_WIRELESS_ENABLED=true`, `_API_TOKEN`, `_SENDER_ID` | SSL Wireless ISMS Plus | Business account, secret store | refused if not enabled, or the token or sender id is missing (before the database is touched); the https scheme and sender id length are checked by the adapter later in startup | One approved real test SMS |
 | Outgoing IP allowlisting | The server's fixed egress IP is allowlisted in the ISMS Plus portal | Operator and SSL Wireless | not checked | The test SMS is delivered, not rejected |
 
 ## 2. People and access

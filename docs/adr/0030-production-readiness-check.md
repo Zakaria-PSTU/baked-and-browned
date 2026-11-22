@@ -51,3 +51,13 @@
   - An unreachable or wrong database fails at connection time, as before.
 - **Consequence.** A deployment can still apply migrations and then stop on one of these checks. `docs/launch-readiness.md` remains the list of what each setting needs.
 - The operator command (`provision-admin`) is still excluded from the check.
+
+## Amendment (2026-11-22, Option A: the remaining refusals move before the database)
+- **Three more rules** join the seven in the Decision. They replace the late refusals listed in the amendment above, so they now also happen before any database connection or Flyway migration:
+  1. `app.security.jwt.private-key` must be set to a PKCS#8 PEM RSA key of 2048 bits or more. The check parses it the way startup does and discards it; the message names the setting and never says why parsing failed. Rule 3 (`allow-ephemeral-key`) stays.
+  2. The SSL Wireless adapter must be enabled (`app.notifications.sms.ssl-wireless.enabled`), with a non-blank `api-token` and `sender-id`. In `prod` it is the only `SmsSender`, so without it the application could not start. When it is disabled only that one problem is reported.
+  3. `prod` must not be active together with `dev` or `test`. Those profiles are the only way `FakeSmsSender` and `FakePaymentGateway` can load.
+- **Still checked later, by the adapter:** the SMS address scheme (https), the sender id length and the timeouts (`SslWirelessProperties.settings()`). The check does not copy them, so it cannot drift from them.
+- **Still late, by nature:** an unreachable or wrong database, and failures while creating beans that depend on external state.
+- **Guards against drift:** `SslWirelessWiringTest.theReadinessCheckAgreesWithTheWiring` fails if the SMS rule and the real wiring disagree. `ProductionStartupOrderIntegrationTests` shows, for each new rule, that a refused configuration reaches neither a closed database port nor a fresh database (zero tables).
+- The fake adapters keep their own constructor guards as a second layer. The operator command (`provision-admin`) is still excluded, so it does not need SMS or key settings.
