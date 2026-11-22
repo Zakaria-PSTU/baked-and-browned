@@ -51,3 +51,9 @@
 - **A web screen for ADMINs.** It is faster to reach during an incident, but it is the first role or state endpoint (against ADR-0024), and a compromised ADMIN could disable the others. That would need a second approval or other safeguards. Rejected for now.
 - **Leave revocation to the next refresh (lazy).** Simpler, but it is exactly the "re-enabling revives a stolen token" gap.
 - **A demotion mode.** Rarely needed, and disabling plus provisioning a new account covers it.
+
+## Amendment (2026-11-22, QA finding F-4)
+- **Tokens issued before a disable stay invalid after a re-enable.** Gap 2 and the Enable bullet above were about refresh tokens. The access tokens (up to 15 minutes) were a separate gap, found as QA finding F-1: a token issued before the disable became valid again after the re-enable.
+- It is closed by the account token version (migration V16, merged in PR #36; the design is ADR-0031, which is still Proposed). A database trigger moves `users.token_version` on by one every time `enabled` changes, whether through this command or a hand-written `UPDATE`. Access tokens and refresh families carry the version they were issued under and are refused when it differs from the account's.
+- **So, with V16 in place:** after a disable followed by a re-enable, neither an access token nor a refresh token issued before the disable is accepted, and the user signs in again. Access tokens issued before V16 was deployed carry no version and are refused (the web app replaces them with one refresh).
+- **Limits.** This covers the disable and enable path only. A logout still leaves its access token valid until it expires, at most 15 minutes (see ADR-0031, "Remaining limitations").

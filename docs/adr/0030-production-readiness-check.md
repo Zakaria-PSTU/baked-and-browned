@@ -39,3 +39,15 @@
 - **Warnings only.** They are easy to miss in deploy logs, and the failures they predict are customer-facing.
 - **A separate `application-prod.yaml` with production values.** That puts deployment-specific values (domains, paths) in the repository, and still does not catch a variable that was never set.
 - **Checking at first use** (for example when a refresh arrives). That is too late: the site is already serving.
+
+## Amendment (2026-11-22, QA finding F-4; the order was fixed by F-3, PR #38)
+- **What runs before database access.** `ProductionReadinessCheck` is a `BeanFactoryPostProcessor`, so Spring runs it before creating any ordinary bean. A refusal from the seven rules in the Decision therefore happens before the application opens a database connection or runs a Flyway migration. This is covered by `ProductionStartupOrderIntegrationTests`: a refused configuration leaves a fresh database with no tables, and a safe configuration starts and migrates.
+  - The check reads settings only. It does not test that a value works (for example that the domain resolves).
+  - The cash-on-delivery-only warning is logged at the same point.
+- **What still happens afterwards.** Other production refusals are ordinary bean checks and run when their bean is created, which can be after the migrations have run. Their order relative to Flyway is not guaranteed and not tested:
+  - no `SmsSender` bean (ADR-0027);
+  - no JWT signing key (`JwtConfig`), when `allow-ephemeral-key` is not set;
+  - `FakeSmsSender` and `FakePaymentGateway`, which refuse the `prod` profile.
+  - An unreachable or wrong database fails at connection time, as before.
+- **Consequence.** A deployment can still apply migrations and then stop on one of these checks. `docs/launch-readiness.md` remains the list of what each setting needs.
+- The operator command (`provision-admin`) is still excluded from the check.
