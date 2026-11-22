@@ -2,6 +2,8 @@ package com.bakedandbrowned.common.readiness;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.security.KeyPairGenerator;
+import java.util.Base64;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -20,7 +22,29 @@ class ProductionReadinessCheckTest {
 			.withProperty("app.payments.online.api-base-url", "https://api.bakedandbrowned.com.bd")
 			.withProperty("app.payments.proof-storage.directory", "/var/lib/bakedandbrowned/payment-proofs")
 			.withProperty("app.payments.sslcommerz.enabled", "true")
-			.withProperty("app.payments.sslcommerz.base-url", "https://securepay.sslcommerz.com");
+			.withProperty("app.payments.sslcommerz.base-url", "https://securepay.sslcommerz.com")
+			.withProperty("app.security.jwt.private-key", PEM)
+			.withProperty("app.notifications.sms.ssl-wireless.enabled", "true")
+			.withProperty("app.notifications.sms.ssl-wireless.api-token", SMS_TOKEN)
+			.withProperty("app.notifications.sms.ssl-wireless.sender-id", "BAKEDBROWN");
+	}
+
+	private static final String SMS_TOKEN = "sms-token-not-real";
+
+	/** A real throwaway key, so the rule's parsing is exercised. */
+	private static final String PEM = pkcs8Pem();
+
+	private static String pkcs8Pem() {
+		try {
+			KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+			generator.initialize(2048);
+			String body = Base64.getMimeEncoder(64, "\n".getBytes())
+				.encodeToString(generator.generateKeyPair().getPrivate().getEncoded());
+			return "-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----\n";
+		}
+		catch (java.security.GeneralSecurityException ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	/** The local-development defaults shipped in application.yaml, plus the two switches turned the wrong way. */
@@ -47,10 +71,11 @@ class ProductionReadinessCheckTest {
 	void everyDevelopmentDefaultIsReportedInOneListThatNamesNoValues() {
 		List<String> problems = ProductionReadinessCheck.problems(developmentDefaults());
 
-		assertThat(problems).hasSize(6);
+		assertThat(problems).hasSize(8);
 		assertThat(String.join("\n", problems)).contains("app.security.allowed-origins",
 				"app.security.secure-cookies", "app.security.jwt.allow-ephemeral-key", "app.payments.online.return-url",
-				"app.payments.online.api-base-url", "app.payments.proof-storage.directory")
+				"app.payments.online.api-base-url", "app.payments.proof-storage.directory", "app.security.jwt.private-key",
+				"app.notifications.sms.ssl-wireless.enabled")
 			.doesNotContain("localhost:4200", "localhost:8080", "data/payment-proofs");
 	}
 
@@ -67,7 +92,53 @@ class ProductionReadinessCheckTest {
 		assertThat(only("app.payments.online.api-base-url", "https://[::1]:8443")).contains("api-base-url");
 		assertThat(only("app.payments.proof-storage.directory", "./proofs")).contains("proof-storage");
 		// A missing value is as bad as a development one (the two switches default to safe values).
-		assertThat(ProductionReadinessCheck.problems(new MockEnvironment())).hasSize(4);
+		assertThat(ProductionReadinessCheck.problems(new MockEnvironment())).hasSize(6);
+	}
+
+	@Test
+	void theSigningKeyMustBePresentAndParse() {
+		assertThat(only("app.security.jwt.private-key", "")).contains("app.security.jwt.private-key");
+		assertThat(only("app.security.jwt.private-key", "   ")).contains("app.security.jwt.private-key");
+		// Garbage and PKCS#1 are refused, and the message repeats none of the text.
+		String garbage = only("app.security.jwt.private-key",
+				"-----BEGIN PRIVATE KEY-----\nNOTAKEYNOTAKEY\n-----END PRIVATE KEY-----");
+		assertThat(garbage).contains("app.security.jwt.private-key").doesNotContain("NOTAKEYNOTAKEY");
+		assertThat(only("app.security.jwt.private-key",
+				"-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----"))
+			.contains("app.security.jwt.private-key");
+		// A real key passes and is never echoed.
+		assertThat(ProductionReadinessCheck.problems(ready())).isEmpty();
+	}
+
+	@Test
+	void theSmsSenderMustBeTheEnabledRealAdapterWithItsSettings() {
+		assertThat(only("app.notifications.sms.ssl-wireless.enabled", "false"))
+			.contains("app.notifications.sms.ssl-wireless.enabled");
+		// Not set at all is the shipped default (off).
+		assertThat(ProductionReadinessCheck.problems(ready().withProperty("app.notifications.sms.ssl-wireless.enabled", "")))
+			.hasSize(1);
+		assertThat(only("app.notifications.sms.ssl-wireless.api-token", " ")).contains("api-token")
+			.doesNotContain(SMS_TOKEN);
+		assertThat(only("app.notifications.sms.ssl-wireless.sender-id", "")).contains("sender-id");
+		// A disabled adapter needs no token or sender id: one problem, not three.
+		assertThat(ProductionReadinessCheck.problems(ready().withProperty("app.notifications.sms.ssl-wireless.enabled", "false")
+			.withProperty("app.notifications.sms.ssl-wireless.api-token", "")
+			.withProperty("app.notifications.sms.ssl-wireless.sender-id", ""))).hasSize(1);
+	}
+
+	@Test
+	void prodMustNotBeCombinedWithDevOrTest() {
+		for (String other : List.of("dev", "test")) {
+			MockEnvironment env = ready();
+			env.setActiveProfiles("prod", other);
+			assertThat(ProductionReadinessCheck.problems(env)).singleElement()
+				.asString()
+				.contains("spring.profiles.active")
+				.contains(other);
+		}
+		MockEnvironment prodOnly = ready();
+		prodOnly.setActiveProfiles("prod");
+		assertThat(ProductionReadinessCheck.problems(prodOnly)).isEmpty();
 	}
 
 	@Test

@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -20,6 +21,8 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+
+import com.bakedandbrowned.common.security.JwtSigningKey;
 
 /**
  * Refuses to start the production web application while a local-development default is still in
@@ -37,6 +40,12 @@ import org.springframework.stereotype.Component;
  * ordinary bean: before the web server, the DataSource, Flyway and everything that uses the
  * database. A refused configuration therefore opens no database connection and runs no migration
  * (QA finding F-3). It needs nothing but the {@link Environment}.
+ * <p>
+ * The refusals that used to come from ordinary beans are rules here too, so they also happen before
+ * the database: no usable JWT signing key, no SMS sender (the real adapter is the only one in
+ * {@code prod}), and {@code prod} combined with {@code dev} or {@code test}, the only way the fake
+ * adapters could load. The rules only look at settings; the adapters still validate their own
+ * details (for example the SMS address scheme) when they are created.
  */
 @Component
 @Profile("prod & !provision-admin")
@@ -104,7 +113,56 @@ public class ProductionReadinessCheck implements BeanFactoryPostProcessor, Envir
 			problems.add("app.payments.proof-storage.directory (APP_PAYMENTS_PROOF_STORAGE_DIRECTORY) must be an "
 					+ "absolute path on a private, backed-up volume");
 		}
+		if (!isUsableSigningKey(environment.getProperty("app.security.jwt.private-key"))) {
+			problems.add("app.security.jwt.private-key (APP_SECURITY_JWT_PRIVATE_KEY) must be set to a PKCS#8 PEM "
+					+ "RSA key of 2048 bits or more, from the secret store");
+		}
+		smsProblems(binder, environment, problems);
+		List<String> profiles = Arrays.asList(environment.getActiveProfiles());
+		if (profiles.contains("dev") || profiles.contains("test")) {
+			problems.add("spring.profiles.active (SPRING_PROFILES_ACTIVE) must not combine prod with dev or test: "
+					+ "those profiles load the fake SMS sender and the fake payment gateway");
+		}
 		return problems;
+	}
+
+	/**
+	 * In {@code prod} the only SmsSender is the SSL Wireless adapter, so it must be enabled and have
+	 * its token and sender id. Only presence is checked; the adapter validates the rest when created.
+	 */
+	private static void smsProblems(Binder binder, Environment environment, List<String> problems) {
+		if (!binder.bind("app.notifications.sms.ssl-wireless.enabled", Boolean.class).orElse(false)) {
+			problems.add("app.notifications.sms.ssl-wireless.enabled (APP_NOTIFICATIONS_SMS_SSL_WIRELESS_ENABLED) "
+					+ "must be true: production has no other SMS sender");
+			return;
+		}
+		if (isBlank(environment.getProperty("app.notifications.sms.ssl-wireless.api-token"))) {
+			problems.add("app.notifications.sms.ssl-wireless.api-token (APP_NOTIFICATIONS_SMS_SSL_WIRELESS_API_TOKEN) "
+					+ "must be set from the secret store");
+		}
+		if (isBlank(environment.getProperty("app.notifications.sms.ssl-wireless.sender-id"))) {
+			problems.add("app.notifications.sms.ssl-wireless.sender-id (APP_NOTIFICATIONS_SMS_SSL_WIRELESS_SENDER_ID) "
+					+ "must be set to the sender id assigned to the account");
+		}
+	}
+
+	/** Parses the key the way startup would, and throws the result away. Never reports why it failed. */
+	private static boolean isUsableSigningKey(@Nullable String pem) {
+		if (isBlank(pem)) {
+			return false;
+		}
+		try {
+			JwtSigningKey.fromPem("readiness-check", pem);
+			return true;
+		}
+		catch (RuntimeException ex) {
+			// Deliberately not logged or chained: the message could echo part of the key.
+			return false;
+		}
+	}
+
+	private static boolean isBlank(@Nullable String value) {
+		return value == null || value.isBlank();
 	}
 
 	/** Allowed but worth a look before launch. */

@@ -19,6 +19,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.jdbc.autoconfigure.JdbcConnectionDetails;
@@ -105,7 +107,72 @@ class ProductionStartupOrderIntegrationTests {
 		}
 	}
 
+	/**
+	 * The refusals that used to come from ordinary beans (JWT key, SMS sender, fake adapters) now come
+	 * from the readiness check too: the safe configuration with exactly one thing broken. The closed
+	 * port proves the database was not tried (a connection error would replace the refusal).
+	 */
+	@ParameterizedTest(name = "{0}")
+	@CsvSource({ "no JWT key,app.security.jwt.private-key", "unparseable JWT key,app.security.jwt.private-key",
+			"SMS sender not enabled,app.notifications.sms.ssl-wireless.enabled",
+			"SMS token missing,app.notifications.sms.ssl-wireless.api-token",
+			"SMS sender id missing,app.notifications.sms.ssl-wireless.sender-id",
+			"prod combined with dev,spring.profiles.active" })
+	void aLateRefusalNowHappensWithoutTryingTheDatabase(String broken, String setting) throws Exception {
+		int closedPort;
+		try (ServerSocket socket = new ServerSocket(0)) {
+			closedPort = socket.getLocalPort();
+		}
+		Map<String, Object> env = breakOne(broken);
+		env.put("spring.datasource.url", "jdbc:postgresql://localhost:" + closedPort + "/nothing_here");
+
+		assertThatThrownBy(() -> start(env).close()).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining(NOT_READY)
+			.hasMessageContaining(setting)
+			.message()
+			.doesNotContain(SECRET_TOKEN, SECRET_KEY_TEXT);
+	}
+
+	/** The same refusals leave a fresh database with no tables: no migration ran. */
+	@ParameterizedTest(name = "{0}")
+	@CsvSource({ "no JWT key,app.security.jwt.private-key", "unparseable JWT key,app.security.jwt.private-key",
+			"SMS sender not enabled,app.notifications.sms.ssl-wireless.enabled",
+			"SMS token missing,app.notifications.sms.ssl-wireless.api-token",
+			"SMS sender id missing,app.notifications.sms.ssl-wireless.sender-id",
+			"prod combined with dev,spring.profiles.active" })
+	void aLateRefusalNowLeavesAFreshDatabaseUntouched(String broken, String setting) throws Exception {
+		String url = newProbeDatabase();
+		Map<String, Object> env = breakOne(broken);
+		env.put("spring.datasource.url", url);
+
+		assertThatThrownBy(() -> start(env).close()).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining(NOT_READY)
+			.hasMessageContaining(setting);
+
+		assertThat(tables(url)).isZero();
+	}
+
 	// ------------------------------------------------------------------ helpers
+	private static final String SECRET_TOKEN = "test-token-not-real";
+
+	private static final String SECRET_KEY_TEXT = "NOTAKEYNOTAKEY";
+
+	/** The safe configuration with exactly one thing wrong. */
+	private Map<String, Object> breakOne(String broken) throws Exception {
+		Map<String, Object> env = safe();
+		switch (broken) {
+			case "no JWT key" -> env.remove("app.security.jwt.private-key");
+			case "unparseable JWT key" -> env.put("app.security.jwt.private-key",
+					"-----BEGIN PRIVATE KEY-----\n" + SECRET_KEY_TEXT + "\n-----END PRIVATE KEY-----\n");
+			case "SMS sender not enabled" -> env.put("app.notifications.sms.ssl-wireless.enabled", "false");
+			case "SMS token missing" -> env.put("app.notifications.sms.ssl-wireless.api-token", "");
+			case "SMS sender id missing" -> env.put("app.notifications.sms.ssl-wireless.sender-id", " ");
+			case "prod combined with dev" -> env.put("spring.profiles.active", "prod,dev");
+			default -> throw new IllegalArgumentException(broken);
+		}
+		return env;
+	}
+
 
 	/** The shipped local-development defaults, which production must refuse. */
 	private Map<String, Object> unsafe() {
