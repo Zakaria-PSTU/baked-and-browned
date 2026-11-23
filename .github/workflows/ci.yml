@@ -92,3 +92,35 @@ jobs:
         run: python -m pip install -r tools/spec/requirements.txt
       - name: Check spec, migrations and API/DB alignment
         run: python tools/spec/check_spec.py
+
+  loader:
+    name: Catalogue loader (Python 3.11)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/catalogue-loader
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: tools/catalogue-loader/requirements-dev.txt
+      - name: Install type checker (pinned)
+        run: python -m pip install -r requirements-dev.txt
+      - name: The TLS tests need the openssl command line tool
+        run: openssl version
+      # No pipe here: the default shell has no pipefail, so a pipe could hide a failing test.
+      - name: Unit tests (warnings are errors; nothing may be skipped)
+        run: |
+          python -B -W error -m unittest discover -s tests -t . 2> "$RUNNER_TEMP/unittest.log" || { cat "$RUNNER_TEMP/unittest.log"; exit 1; }
+          cat "$RUNNER_TEMP/unittest.log"
+          if grep -q "skipped=" "$RUNNER_TEMP/unittest.log"; then
+            echo "::error::Some tests were skipped. CI must run all of them (the POSIX and TLS tests included)."
+            exit 1
+          fi
+      - name: Strict type check
+        run: python -m mypy --strict --python-version 3.11 catalogue_loader tests

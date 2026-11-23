@@ -83,7 +83,7 @@ class LoaderTestCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.tmp = Path(tmp.name)
         self.fake = FakeApi(NOW)
-        self.token_file = self._write("token.txt", ADMIN_TOKEN)
+        self.token_file = self._write("token.txt", ADMIN_TOKEN, secret=True)
 
     def tearDown(self) -> None:
         # Evidence for "no full-replacement update is ever issued": whatever a test did, the
@@ -91,9 +91,17 @@ class LoaderTestCase(unittest.TestCase):
         methods = {method for method, _ in self.fake.calls}
         self.assertLessEqual(methods, ALLOWED_METHODS, "the loader issued an update or delete")
 
-    def _write(self, name: str, text: str) -> Path:
+    def _write(self, name: str, text: str, *, secret: bool = False) -> Path:
+        """Write a fixture file. Pass ``secret=True`` for anything that stands for a credential.
+
+        On POSIX the loader refuses a credential file that group or others can read, and a file
+        created with the default umask (usually 0644) is exactly that. A credential fixture must
+        therefore be private (0600), as a real operator's would be. Windows has no such check.
+        """
         path = self.tmp / name
         path.write_text(text, encoding="utf-8")
+        if secret:
+            path.chmod(0o600)
         return path
 
     def run_cli(

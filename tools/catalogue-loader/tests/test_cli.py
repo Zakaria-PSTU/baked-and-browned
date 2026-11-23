@@ -105,9 +105,9 @@ class SafeguardTest(LoaderTestCase):
     def test_exactly_one_credential_mode_is_required(self) -> None:
         cases = {
             "none": ([], False),
-            "both": (["--identifier", IDENTIFIER, "--password-file", str(self._write("pw.txt", PASSWORD))], True),
+            "both": (["--identifier", IDENTIFIER, "--password-file", str(self._write("pw.txt", PASSWORD, secret=True))], True),
             "identifier only": (["--identifier", IDENTIFIER], False),
-            "password only": (["--password-file", str(self._write("pw.txt", PASSWORD))], False),
+            "password only": (["--password-file", str(self._write("pw.txt", PASSWORD, secret=True))], False),
         }
         for name, (extra, with_token) in cases.items():
             with self.subTest(name):
@@ -117,20 +117,42 @@ class SafeguardTest(LoaderTestCase):
 
     def test_a_missing_or_empty_credential_file_is_refused_without_a_request(self) -> None:
         self.assertEqual(1, self.run_cli(token_file=self.tmp / "absent.txt").code)
-        self.assertEqual(1, self.run_cli(token_file=self._write("empty.txt", "  \n")).code)
+        self.assertEqual(1, self.run_cli(token_file=self._write("empty.txt", "  \n", secret=True)).code)
         self.assertEqual([], self.fake.calls)
 
     @unittest.skipUnless(os.name == "posix", "file modes are only meaningful on POSIX")
-    def test_a_credential_file_readable_by_others_is_refused(self) -> None:
-        self.token_file.chmod(0o644)
-        self.assertEqual(1, self.run_cli().code)
-        self.token_file.chmod(0o600)
-        self.assertEqual(0, self.run_cli().code)
+    def test_a_token_file_readable_by_group_or_others_is_refused(self) -> None:
+        for mode in (0o644, 0o640, 0o604, 0o660, 0o666, 0o710):
+            with self.subTest(mode=oct(mode)):
+                self.token_file.chmod(mode)
+                result = self.run_cli()
+                self.assertEqual(1, result.code)
+                self.assertIn("0600", result.err)
+                self.assertEqual([], self.fake.calls)  # refused before any request
+        for mode in (0o600, 0o400):
+            with self.subTest(mode=oct(mode)):
+                self.token_file.chmod(mode)
+                self.assertEqual(0, self.run_cli().code)
+
+    @unittest.skipUnless(os.name == "posix", "file modes are only meaningful on POSIX")
+    def test_a_password_file_readable_by_group_or_others_is_refused(self) -> None:
+        password_file = self._write("pw.txt", PASSWORD, secret=True)
+        login = ["--identifier", IDENTIFIER, "--password-file", str(password_file)]
+        for mode in (0o644, 0o640, 0o604):
+            with self.subTest(mode=oct(mode)):
+                password_file.chmod(mode)
+                result = self.run_cli(extra=login, use_default_credentials=False)
+                self.assertEqual(1, result.code)
+                self.assertEqual([], self.fake.calls)  # not even a login attempt
+        for mode in (0o600, 0o400):
+            with self.subTest(mode=oct(mode)):
+                password_file.chmod(mode)
+                self.assertEqual(0, self.run_cli(extra=login, use_default_credentials=False).code)
 
 
 class AuthenticationTest(LoaderTestCase):
     def _login_args(self, password: str = PASSWORD) -> list[str]:
-        return ["--identifier", IDENTIFIER, "--password-file", str(self._write("password.txt", password))]
+        return ["--identifier", IDENTIFIER, "--password-file", str(self._write("password.txt", password, secret=True))]
 
     def test_password_login_exchanges_credentials_for_a_token(self) -> None:
         result = self.run_cli(extra=self._login_args(), use_default_credentials=False)
@@ -149,12 +171,12 @@ class AuthenticationTest(LoaderTestCase):
         self.assertEqual(3, self.run_cli(extra=self._login_args(), use_default_credentials=False).code)
 
     def test_a_rejected_token_is_exit_3(self) -> None:
-        result = self.run_cli(token_file=self._write("bad.txt", "not-a-real-token"))
+        result = self.run_cli(token_file=self._write("bad.txt", "not-a-real-token", secret=True))
         self.assertEqual(3, result.code)
         self.assertEqual([], self.fake.writes)
 
     def test_a_token_without_the_admin_role_is_exit_3(self) -> None:
-        result = self.run_cli(apply=True, token_file=self._write("customer.txt", CUSTOMER_TOKEN))
+        result = self.run_cli(apply=True, token_file=self._write("customer.txt", CUSTOMER_TOKEN, secret=True))
         self.assertEqual(3, result.code)
         self.assertEqual([], self.fake.writes)
 
@@ -190,7 +212,7 @@ class RedactionTest(LoaderTestCase):
 
     def test_a_failed_login_prints_neither_the_password_nor_the_identifier(self) -> None:
         self.fake.echo_secrets_in_errors = True
-        password_file = self._write("password.txt", "wrong-password-SENTINEL")
+        password_file = self._write("password.txt", "wrong-password-SENTINEL", secret=True)
         result = self.run_cli(extra=["--identifier", IDENTIFIER, "--password-file", str(password_file)],
                               use_default_credentials=False)
         self.assertEqual(3, result.code)

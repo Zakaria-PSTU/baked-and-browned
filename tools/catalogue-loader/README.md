@@ -1,10 +1,14 @@
 # Catalogue loader
 
 Creates the product catalogue, delivery zones and delivery slots described by a JSON manifest,
-through the existing admin API. Python 3.11 or newer, standard library only.
+through the existing admin API. Python 3.11 or newer, standard library only. The tests and
+`mypy --strict` run in CI on Python 3.11 (Linux), and have also been run on Python 3.14 (Windows).
 
 **It is create-only.** It adds what is missing and reports what differs. It never updates,
 closes, deactivates or deletes a record. A run is a **dry run unless `--apply` is given**.
+
+**The six delivery zones that ship with the database are configured by hand**, not by this tool:
+see "Shipped delivery zones" below.
 
 Nothing in this tool changes the backend, the schema, or any business rule.
 
@@ -23,6 +27,56 @@ The admin API has no upsert, no delete and no version on its records:
 A safe update would need a backend change (a version check), which is out of scope. So v1 reports
 **DRIFT** for an existing record that differs from the manifest, and leaves it alone. `--update`
 exists only to refuse, with that explanation.
+
+## Shipped delivery zones (configure by hand)
+
+The database ships with six delivery zones: `DHANMONDI`, `MOHAMMADPUR`, `MIRPUR`, `UTTARA`,
+`GULSHAN` and `BANANI`. Migration V3 creates them as reference examples: **inactive, with no fee
+and no minimum**. They exist in every environment, their `code` and `name` are unique, and a
+customer cannot choose a zone until it has a fee and is active.
+
+This tool cannot configure them. It is create-only, so a manifest entry for one of these codes is
+reported as `DRIFT` (`deliveryFee`, `active`), exits 4 and changes nothing. Set them up by hand,
+once per environment, through the admin API. `BASE` is the API origin, for example
+`https://staging.example.org`.
+
+1. Put a fresh ADMIN access token in a header file, `headers.txt`, with one line
+   `Authorization: Bearer <access token>`. Make it readable only by you, and delete it afterwards.
+   A file keeps the token out of the command line and the shell history.
+2. List the zones and note each zone's `id`:
+   ```sh
+   curl -sS -H @headers.txt "$BASE/api/v1/admin/delivery-zones"
+   ```
+3. For each zone, send the **complete** record (every field, see the warnings below). Keep `code`
+   and `name` exactly as listed:
+   ```sh
+   curl -sS -X PATCH "$BASE/api/v1/admin/delivery-zones/<ZONE_ID>" \
+     -H @headers.txt -H "Content-Type: application/json" \
+     -d '{"code":"<CODE>","name":"<NAME>","deliveryFee":<FEE>,"minOrderAmount":<MINIMUM or null>,"active":true,"sortOrder":<ORDER>}'
+   ```
+4. Verify. List the zones again, then check what customers see. This list needs no token and shows
+   only active zones, with their fee and minimum:
+   ```sh
+   curl -sS "$BASE/api/v1/delivery-zones"
+   ```
+5. Optional: add each zone to your manifest with the same values. A dry run then reports `NOOP`,
+   and any later hand edit shows up as `DRIFT`.
+
+Two behaviours of the API that will catch you out (both rehearsed against the real backend):
+
+- **`PATCH` replaces the whole record.** A field you leave out is reset, not kept: an omitted
+  `minOrderAmount` becomes `null` and an omitted `sortOrder` becomes `0`. Always send all six
+  fields.
+- **`active: true` needs a `deliveryFee`.** Without one the API answers 422 `ZONE_FEE_REQUIRED` and
+  leaves the zone unchanged.
+
+Every change that alters a zone is audited as `DELIVERY_ZONE_UPDATED`, and the backend stores a fee
+snapshot on each order, so changing a fee does not alter orders already placed. Work as one
+operator, one zone at a time. The fees and minimums are the shop's decision, so this README
+deliberately contains none. Do not add a second zone for an area that already has a shipped one:
+the name `Dhanmondi` is taken, but a near-duplicate such as `Dhanmondi Area` would be accepted, and
+customers could be shown both. The steps were rehearsed on a fictional zone with curl 8.7.1 on
+Windows. Quote the JSON the way your shell requires.
 
 ## Quick start
 
@@ -57,8 +111,10 @@ The tool never takes a secret on the command line and never writes one to disk.
   never printed.
 - Use **your own** ADMIN account, one operator per run. Every write is audited under that
   account. Do not create a shared or service ADMIN account for this.
-- On POSIX a credential file readable by group or others (anything looser than `0600`) is
-  refused.
+- On POSIX systems (verified on Linux) a credential file that group or others can read is refused
+  before any request is sent. That is any mode looser than `0600`, including the common default
+  `0644`: run `chmod 600 FILE`. It applies to token files and password files alike. Windows file
+  permissions are not inspected, so keep the file in a folder only you can read.
 - **Admin MFA** is a launch gate and does not exist yet. When it does, a password login will
   stop working for admins; use the access-token route.
 
@@ -155,17 +211,63 @@ machine code.
   is accepted only for `localhost`, `127.0.0.1` or `::1`, and only with `--allow-insecure-local`.
 - `--apply` to any non-local host also needs `--confirm-target <that host>`, typed exactly.
 - Redirects are never followed, so a bearer token cannot be forwarded to another host.
-- Certificates are verified (Python's default).
+- TLS certificates and host names are always verified, and there is no option to turn that off (see
+  "TLS and private certificate authorities").
+
+## TLS and private certificate authorities
+
+The tool always verifies the server's certificate chain **and** host name, and there is no option
+to switch that off. A connection that fails verification is dropped during the handshake, so **no
+request is sent and the bearer token is never transmitted**.
+
+- **A public CA** (the usual case for a production domain): nothing to do.
+- **A private CA** (for example a staging proxy with an internal certificate): trust it for this
+  one process by setting `SSL_CERT_FILE` to a PEM file that holds the CA certificate. Do not add it
+  to the operating system's certificate store for this.
+  ```sh
+  export SSL_CERT_FILE=/path/to/staging-ca.pem
+  python -m catalogue_loader --manifest m.json --base-url https://staging.example.org --access-token-file token
+  ```
+  In PowerShell, set `$env:SSL_CERT_FILE = 'C:\path\staging-ca.pem'` first, then run the same
+  command.
+
+What was verified (the automated tests use a local HTTPS server; a manual run used the real backend
+behind a TLS-terminating forwarder): a certificate issued by the CA named in `SSL_CERT_FILE` is
+accepted. The same server without it, a certificate from a different CA, and a certificate for a
+different host name are all refused with exit 2 and zero requests sent. The **real-backend** TLS run
+was on Windows (Python 3.14). The automated TLS tests (a local HTTPS server) run on Windows and, in
+CI, on Linux (Python 3.11). It was **not** tested on macOS, where some Python builds bring their
+own certificate bundle and may behave differently.
+
+Platform differences to know about:
+
+- Which authorities are trusted by default is decided by the Python build and the operating
+  system, not by this tool.
+- The credential-file permission check runs only on POSIX systems.
+- Asia/Dhaka is a fixed UTC+06:00 offset, because the standard library has no time-zone database on
+  Windows.
 
 ## Tests and checks
 
+From this directory:
+
 ```sh
+python -m pip install -r requirements-dev.txt   # mypy only: a development check, not a dependency of the tool
 python -B -W error -m unittest discover -s tests -t .
-python -m mypy --strict catalogue_loader tests        # mypy is a dev check, not a dependency
+python -m mypy --strict --python-version 3.11 catalogue_loader tests
 ```
 
-Tests run against an in-memory fake of the admin API (`tests/fakes.py`), which mirrors the real
-backend's rules (unique keys and 409s, 422 for past slots, 100-item pages, Dhaka-day slot
-queries) and can inject failures. A few tests use a real HTTP server on `127.0.0.1`. **They do not
-prove behaviour against the real Spring backend**: run a dry run and an apply against a local
-stack (the `run-app` skill) before the first production use.
+- On Linux, and in CI, **no test may be skipped**, and the CI job fails if one is. On Windows the
+  POSIX-only permission tests skip.
+- The TLS tests make throwaway certificates with the `openssl` command line tool (the CI job checks
+  that it is present). Locally they are skipped if it is missing.
+- A test fixture that stands for a credential must be created with `secret=True`, which makes it
+  mode `0600`. The loader refuses a credential file that others can read on POSIX, so a fixture with
+  default permissions makes many tests fail on Linux while passing on Windows.
+- CI runs all of this as the "Catalogue loader (Python 3.11)" job.
+
+Most tests run against an in-memory fake of the admin API (`tests/fakes.py`), which mirrors the real
+backend's rules (unique keys and 409s, 422 for past slots, 100-item pages, Dhaka-day slot queries)
+and can inject failures. A fake can share its author's misreadings, so before first use on a new
+environment do a dry run against it, and before relying on a change to the loader's behaviour run
+it against a local stack (the `run-app` skill).
