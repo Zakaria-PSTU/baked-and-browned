@@ -95,7 +95,17 @@ A refused configuration stops the application **before** it opens a database con
 3. **API.** Start with the `prod` profile and the settings in section 4. On the first start Flyway applies V1 to V17; confirm 17 successful rows in `flyway_schema_history`. Wait for `/actuator/health/readiness` to report `UP`. Read the start-up log for warnings: the cash-on-delivery-only warning is expected on staging; an ephemeral-key warning is not.
 4. **Proxy and web app.** Start the proxy with the static files and the `/api` route.
 5. **Provision the first admin,** only after the API is healthy and idle, with the one-off command described in the README ("Provisioning admins"): the same jar, `--spring.profiles.active=provision-admin`, passwords as secret files with mode `0400` or `0600`, removed after the run. Then provision the **second** admin with `ADMIN_PROVISION_MODE=additional`. Never type passwords inline, and do not run the command while the API is starting.
-6. **Load the catalogue, delivery zones and slots** (see section 12). The seeded delivery zones are inactive and have no fee.
+6. **Configure the six shipped delivery zones by hand,** once per environment, with the approved values. The seeded zones are inactive and have no fee, and the catalogue loader cannot change them (it is create-only and reports them as `DRIFT`). The commands are in [the loader README, "Shipped delivery zones (configure by hand)"](../tools/catalogue-loader/README.md#shipped-delivery-zones-configure-by-hand). In order, for each zone:
+   1. **GET** the zone list and note the zone's `id`.
+   2. **Verify** the current state. The zone should still be in the seed state (no fee, no minimum, inactive). Stop if it is not.
+   3. **Re-GET** the zone immediately before the write. Stop if any value has changed since step 2.
+   4. **PATCH** the complete record, with all six fields. `PATCH` replaces the whole record, so an omitted field is reset, not kept. Keep `code`, `name` and `sortOrder` as listed, unless the change is approved.
+   5. **GET** again and confirm the values match the approved ones.
+   6. **Check the customer list** (`GET /api/v1/delivery-zones`, no token). A zone appears there only once it is active and has a fee, so activation is the step that makes it available to customers.
+   7. **Verify the audit trail.** Each change to a zone writes one `DELIVERY_ZONE_UPDATED` event. Confirm one event per intended change and none for anything else.
+   8. **Run the loader dry run** against a manifest that holds the approved final values. Every zone should report `NOOP`. Treat any `DRIFT` as a stop condition: a value differs from the approved state, and the cause must be found before anything else is written.
+
+   The fees, minimum orders and activation decisions belong to the business. They are recorded in the approval checklist in [launch-readiness.md](launch-readiness.md), section 3, and are not stored in this repository.
 
 **Deploying a new version:** stop the old instance, then start the new one. Overlapping instances risk, at most, one extra sign-in for a user (ADR-0031, ADR-0032); never run two at once on purpose.
 
@@ -150,7 +160,10 @@ Create `docs/qa/<date>-staging-verification.md` in the format of the earlier QA 
 ## 12. Open decisions and gaps
 
 1. **Online payment on staging.** Staging cannot use the SSLCommerz sandbox under `prod` (section 1). Confirm that online payment is proved by the dev-environment contract suite plus one live low-value payment at launch, or decide on another route.
-2. **Loading the catalogue, delivery zones and slots.** There is no admin screen for them; only the admin API. Decide who loads them and how, and whether a screen is needed before launch.
+2. **Loading the catalogue, delivery zones and slots.** There is no admin screen for them; only the admin API.
+   - **Decided:** the six shipped delivery zones are configured by hand, one at a time, through the admin API, using section 7, step 6. Each change is made by a named operator with their own ADMIN account.
+   - **Decided:** no admin configuration screen is required for initial launch.
+   - **Still open:** the catalogue products and delivery slots. The catalogue loader can create them (create-only, dry run by default). No decision has been recorded on who runs it, or on whether the first launch needs anything beyond it.
 3. **Deployment artifacts.** Decide whether the next step is a Dockerfile and a staging compose draft in the repository, or keeping infrastructure outside it.
 4. **Admin MFA, alerting and a checkout load test** appear under "production hardening" in `docs/architecture.md` but not in the launch checklist. Decide whether they gate launch.
 5. **Shared office IP.** If staff share one public IP, the login limit (10 per 5 minutes per IP) will apply to all of them together.

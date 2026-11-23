@@ -57,6 +57,16 @@ Secrets come only from the platform's secret store, never from files in the repo
 - ADR-0026 (key-bound refresh tokens) stays future work.
 - [ ] Real Safari (iOS) and Android Chrome checked: sign-in, refresh after a reload, checkout, payment return (QA-01 / ADR-0023).
 - [ ] Delivery zones: fees set and activated (the seeded zones are inactive and have no fee).
+  - **Procedure:** the six shipped zones are configured by hand through the admin API, as in [staging-runbook.md](staging-runbook.md), section 7, step 6. The commands are in [the loader README](../tools/catalogue-loader/README.md#shipped-delivery-zones-configure-by-hand).
+  - **Business-owner approval** (recorded by the owner, outside this repository), for each zone:
+    - [ ] Zone code and name confirmed, and no near-duplicate of an existing zone (for example `Dhanmondi Area` next to `Dhanmondi`).
+    - [ ] Delivery fee approved, in BDT, two decimals, zero or more.
+    - [ ] Minimum order amount approved, or none (`null`).
+    - [ ] Sort order approved (it sets the order customers see).
+    - [ ] Activation approved. Activating a zone makes it available to customers at checkout.
+  - **Independent second-person review** (a different person from the one who makes the change) of the approved values against the record in the admin API, before the first write, and again after the GET that follows it.
+  - **Evidence to keep:** the approval names and dates, the `DELIVERY_ZONE_UPDATED` audit events, and the loader dry run showing `NOOP` for every zone. Any `DRIFT` is a stop condition.
+  - **Do not record fee or minimum values in this repository.** Keep them in the business's own records.
 
 ## 4. Launch-day smoke test
 1. The app starts, and the startup log shows no readiness warning, or only the one you expect.
