@@ -64,7 +64,9 @@ Secrets come only from the platform's secret store, never from files in the repo
     - [ ] Minimum order amount approved, or none (`null`).
     - [ ] Sort order approved (it sets the order customers see).
     - [ ] Activation approved. Activating a zone makes it available to customers at checkout.
+    - Approved by (business owner): ______________________  Date: ____________
   - **Independent second-person review** (a different person from the one who makes the change) of the approved values against the record in the admin API, before the first write, and again after the GET that follows it.
+    - Reviewed by: ______________________  Date: ____________
   - **Evidence to keep:** the approval names and dates, the `DELIVERY_ZONE_UPDATED` audit events, and the loader dry run showing `NOOP` for every zone. Any `DRIFT` is a stop condition.
   - **Do not record fee or minimum values in this repository.** Keep them in the business's own records.
 

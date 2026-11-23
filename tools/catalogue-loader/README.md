@@ -43,24 +43,38 @@ once per environment, through the admin API. `BASE` is the API origin, for examp
 1. Put a fresh ADMIN access token in a header file, `headers.txt`, with one line
    `Authorization: Bearer <access token>`. Make it readable only by you, and delete it afterwards.
    A file keeps the token out of the command line and the shell history.
-2. List the zones and note each zone's `id`:
+2. **Read the current state.** List the zones and note the zone's `id`. The zone must still be in
+   its seed state (no fee, no minimum, `active` false). If it is not, **stop** and find out who
+   changed it before going further.
    ```sh
    curl -sS -H @headers.txt "$BASE/api/v1/admin/delivery-zones"
    ```
-3. For each zone, send the **complete** record (every field, see the warnings below). Keep `code`
-   and `name` exactly as listed:
+3. **Re-read the same zone immediately before the PATCH,** and compare every field with step 2.
+   **Stop** if any value has changed. Re-reading narrows the window for a concurrent change; it
+   does not remove it (see "Concurrent changes" below).
+4. **PATCH the complete record.** Send all six fields, and take `code`, `name` and `sortOrder`
+   from the re-read so that they are preserved, unless a change to them has been approved. A
+   field left out is reset, not kept (see the warnings below):
    ```sh
    curl -sS -X PATCH "$BASE/api/v1/admin/delivery-zones/<ZONE_ID>" \
      -H @headers.txt -H "Content-Type: application/json" \
      -d '{"code":"<CODE>","name":"<NAME>","deliveryFee":<FEE>,"minOrderAmount":<MINIMUM or null>,"active":true,"sortOrder":<ORDER>}'
    ```
-4. Verify. List the zones again, then check what customers see. This list needs no token and shows
-   only active zones, with their fee and minimum:
+5. **Read the zone again** from the admin list and compare each saved value with what you sent.
+   **Stop** if any value differs.
+   ```sh
+   curl -sS -H @headers.txt "$BASE/api/v1/admin/delivery-zones"
+   ```
+6. **Check customer visibility.** This list needs no token. A zone appears here only when it is
+   active and has a fee, so activation is what makes it available to customers at checkout:
    ```sh
    curl -sS "$BASE/api/v1/delivery-zones"
    ```
-5. Optional: add each zone to your manifest with the same values. A dry run then reports `NOOP`,
-   and any later hand edit shows up as `DRIFT`.
+7. **Check the audit trail.** Each change that alters a zone writes one `DELIVERY_ZONE_UPDATED`
+   event. Confirm there is one event per intended change and none for anything else.
+8. **Run the loader dry run** against a manifest that holds the approved final values. Every zone
+   must report `NOOP`. Treat any `DRIFT` as a stop condition: a value differs from the approved
+   state, and the cause must be found before anything else is written.
 
 Two behaviours of the API that will catch you out (both rehearsed against the real backend):
 
@@ -70,9 +84,14 @@ Two behaviours of the API that will catch you out (both rehearsed against the re
 - **`active: true` needs a `deliveryFee`.** Without one the API answers 422 `ZONE_FEE_REQUIRED` and
   leaves the zone unchanged.
 
+**Concurrent changes.** The `delivery_zones` table has **no version column**, and the API has no
+ETag, so the server cannot detect a change made by someone else between a read and a write. A
+change made between your re-read and your PATCH is overwritten without an error. The re-read in
+step 3 narrows that window but does not remove it. Work as one operator, one zone at a time, and
+use the audit check in step 7 to find any change you did not make.
+
 Every change that alters a zone is audited as `DELIVERY_ZONE_UPDATED`, and the backend stores a fee
-snapshot on each order, so changing a fee does not alter orders already placed. Work as one
-operator, one zone at a time. The fees and minimums are the shop's decision, so this README
+snapshot on each order, so changing a fee does not alter orders already placed. The fees and minimums are the shop's decision, so this README
 deliberately contains none. Do not add a second zone for an area that already has a shipped one:
 the name `Dhanmondi` is taken, but a near-duplicate such as `Dhanmondi Area` would be accepted, and
 customers could be shown both. The steps were rehearsed on a fictional zone with curl 8.7.1 on

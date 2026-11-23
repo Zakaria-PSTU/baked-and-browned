@@ -98,8 +98,8 @@ A refused configuration stops the application **before** it opens a database con
 6. **Configure the six shipped delivery zones by hand,** once per environment, with the approved values. The seeded zones are inactive and have no fee, and the catalogue loader cannot change them (it is create-only and reports them as `DRIFT`). The commands are in [the loader README, "Shipped delivery zones (configure by hand)"](../tools/catalogue-loader/README.md#shipped-delivery-zones-configure-by-hand). In order, for each zone:
    1. **GET** the zone list and note the zone's `id`.
    2. **Verify** the current state. The zone should still be in the seed state (no fee, no minimum, inactive). Stop if it is not.
-   3. **Re-GET** the zone immediately before the write. Stop if any value has changed since step 2.
-   4. **PATCH** the complete record, with all six fields. `PATCH` replaces the whole record, so an omitted field is reset, not kept. Keep `code`, `name` and `sortOrder` as listed, unless the change is approved.
+   3. **Re-GET** the zone immediately before the write, and compare every field with step 2. Stop if any value has changed. This narrows the risk of a concurrent change but does not remove it: the zone table has no version column, so a change made between the re-read and the PATCH is overwritten without an error (see the loader README, "Concurrent changes").
+   4. **PATCH** the complete record, with all six fields. `PATCH` replaces the whole record, so an omitted field is reset, not kept. Keep `code`, `name` and `sortOrder` as re-read, unless the change is approved.
    5. **GET** again and confirm the values match the approved ones.
    6. **Check the customer list** (`GET /api/v1/delivery-zones`, no token). A zone appears there only once it is active and has a fee, so activation is the step that makes it available to customers.
    7. **Verify the audit trail.** Each change to a zone writes one `DELIVERY_ZONE_UPDATED` event. Confirm one event per intended change and none for anything else.
