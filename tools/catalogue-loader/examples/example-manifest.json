@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "categories": [
+    { "slug": "example-cakes", "name": "Example Cakes", "sortOrder": 10, "active": true }
+  ],
+  "products": [
+    {
+      "slug": "example-fudge-cake",
+      "name": "Example Fudge Cake",
+      "category": "example-cakes",
+      "description": "A fictional product. Replace every value before real use.",
+      "basePrice": "100.00",
+      "minLeadHours": 24,
+      "productionUnits": 1,
+      "status": "DRAFT"
+    }
+  ],
+  "zones": [
+    {
+      "code": "EXAMPLE_ZONE_A",
+      "name": "Example Zone A",
+      "deliveryFee": "10.00",
+      "active": true,
+      "sortOrder": 10
+    },
+    { "code": "EXAMPLE_ZONE_B", "name": "Example Zone B", "active": false, "sortOrder": 20 }
+  ],
+  "slotTemplate": {
+    "horizonDays": 14,
+    "rules": [
+      {
+        "weekdays": ["mon", "tue", "wed", "thu", "fri", "sat"],
+        "windows": [{ "start": "10:00", "end": "12:00", "capacityUnits": 5 }]
+      }
+    ]
+  }
+}
